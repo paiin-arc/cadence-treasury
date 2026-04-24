@@ -1,0 +1,28 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "scheduler": "tsx --env-file=.env src/scheduler/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "^10.3.0",
+    "dotenv": "^17.4.2",
+    "ethers": "^6.16.0",
+    "node-cron": "^4.2.1",
+    "viem": "^2.48.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

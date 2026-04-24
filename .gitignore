@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.*
+!.env.example
+artifacts/
+cache/
+dist/
+__pycache__/
+*.pyc
+.venv/
+typechain-types/
+audit_log.jsonl
+
