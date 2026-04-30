@@ -10,13 +10,15 @@ import StatsRow from "./components/StatsRow";
 import TransactionsHistory from "./components/TransactionsHistory";
 import CliGuide from "./components/CliGuide";
 import MultiPayPanel from "./components/MultiPayPanel";
+import Bills from "./components/Bills";
 
 const queryClient = new QueryClient();
 
-type Tab = "dashboard" | "multipay" | "cli";
+type Tab = "dashboard" | "bills" | "multipay" | "cli";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "bills", label: "Bills" },
   { id: "multipay", label: "Multi-pay" },
   { id: "cli", label: "CLI Guide" },
 ];
@@ -24,7 +26,7 @@ const TABS: { id: Tab; label: string }[] = [
 function readHashTab(): Tab {
   if (typeof window === "undefined") return "dashboard";
   const h = window.location.hash.replace("#", "");
-  if (h === "multipay" || h === "cli") return h;
+  if (h === "bills" || h === "multipay" || h === "cli") return h;
   return "dashboard";
 }
 
@@ -75,6 +77,7 @@ export default function App() {
               <TransactionsHistory />
             </>
           )}
+          {tab === "bills" && <Bills />}
           {tab === "multipay" && <MultiPayPanel />}
           {tab === "cli" && <CliGuide />}
         </section>

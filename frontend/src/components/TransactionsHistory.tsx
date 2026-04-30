@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactElement } from "react";
 import { useTransactionsHistory, type TxHistoryItem } from "../hooks/useTreasury";
 import { TREASURY_ADDRESS } from "../lib/arc";
 
@@ -15,7 +15,7 @@ const FILTERS: { value: FilterType; label: string }[] = [
 
 const TYPE_META: Record<
   TxHistoryItem["type"],
-  { label: string; color: string; icon: JSX.Element }
+  { label: string; color: string; icon: ReactElement }
 > = {
   deposit: {
     label: "Deposit",

@@ -38,9 +38,8 @@ export type TxHistoryItem = {
 const CHUNK_SIZE = 9000n;
 const MAX_CHUNKS = 35;
 
-async function paginatedLogs<T extends { transactionHash?: string | null }>(
-  event: Parameters<typeof publicClient.getLogs>[0]["event"]
-): Promise<T[]> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function paginatedLogs<T = any>(event: any): Promise<T[]> {
   const latest = await publicClient.getBlockNumber();
   const ranges: { from: bigint; to: bigint }[] = [];
   let to = latest;
@@ -212,7 +211,7 @@ export function useTransactionsHistory() {
         cancelled.map(async (l) => {
           let from: string | undefined;
           try {
-            const tx = await publicClient.getTransaction({ hash: l.transactionHash! });
+            const tx = await publicClient.getTransaction({ hash: l.transactionHash as `0x${string}` });
             from = tx.from;
           } catch {
             from = undefined;
