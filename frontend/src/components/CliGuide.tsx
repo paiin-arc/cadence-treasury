@@ -16,17 +16,20 @@ cd cadence-treasury/backend
 npm install`,
   },
   {
-    name: "2. Configure .env",
-    desc: "Create backend/.env from the template and fill in your Circle keys + treasury address.",
-    code: `cp .env.example .env
-
-# backend/.env
-ARC_RPC_URL=https://rpc.testnet.arc.network
+    name: "2. Copy the env template",
+    desc: "Create backend/.env from the template (you'll fill in the values in the next step).",
+    code: `cp .env.example .env`,
+  },
+  {
+    name: "3. Edit backend/.env",
+    desc: "Open backend/.env in your editor and paste the values below. Don't paste this block into the terminal — these are file contents, not shell commands.",
+    code: `ARC_RPC_URL=https://rpc.testnet.arc.network
 TREASURY_CONTRACT_ADDRESS=0xb4A668f7B45c2BBFB89bCb6853E72bFF464c8F44
-CIRCLE_API_KEY=...
-CIRCLE_ENTITY_SECRET=...
-DEPLOYER_WALLET_ID=...
-DEPLOYER_WALLET_ADDRESS=0x...`,
+CIRCLE_API_KEY=your_circle_api_key
+CIRCLE_ENTITY_SECRET=your_entity_secret
+DEPLOYER_WALLET_ID=leave_blank_until_after_create-wallet
+DEPLOYER_WALLET_ADDRESS=leave_blank_until_after_create-wallet`,
+    notes: "Get CIRCLE_API_KEY and register your CIRCLE_ENTITY_SECRET at console.circle.com. Leave the wallet ID/address blank — running create-wallet (next section) will print them.",
   },
 ];
 

@@ -20,9 +20,13 @@ async function main() {
   const WALLET_ID = process.env.DEPLOYER_WALLET_ID!;
 
   const arg = process.argv[2];
-  const amountUSDC = arg ? Number(arg) : 100;
-  if (!Number.isFinite(amountUSDC) || amountUSDC <= 0) {
+  if (!arg) {
     console.error("Usage: tsx scripts/deposit.ts <amount-in-usdc>");
+    process.exit(1);
+  }
+  const amountUSDC = Number(arg);
+  if (!Number.isFinite(amountUSDC) || amountUSDC <= 0) {
+    console.error("Amount must be a positive number");
     process.exit(1);
   }
   const amountRaw = BigInt(Math.round(amountUSDC * 1_000_000)).toString();

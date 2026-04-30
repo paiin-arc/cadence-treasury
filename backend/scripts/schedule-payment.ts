@@ -11,12 +11,20 @@ async function main() {
     process.exit(1);
   }
 
-  const amountUSDC = Number(process.argv[2] ?? 10);
+  const amountArg = process.argv[2];
+  if (!amountArg) {
+    console.error("Usage: tsx scripts/schedule-payment.ts <amountUSDC> [frequencySeconds] [delaySeconds]");
+    console.error("  amountUSDC       (required) e.g. 5");
+    console.error("  frequencySeconds (default 0 = one-off)");
+    console.error("  delaySeconds     (default 30)");
+    process.exit(1);
+  }
+  const amountUSDC = Number(amountArg);
   const frequencySeconds = Number(process.argv[3] ?? 0);
   const delaySeconds = Number(process.argv[4] ?? 30);
 
   if (!Number.isFinite(amountUSDC) || amountUSDC <= 0) {
-    console.error("Usage: tsx scripts/schedule-payment.ts [amountUSDC] [frequencySeconds] [delaySeconds]");
+    console.error("Amount must be a positive number");
     process.exit(1);
   }
 
