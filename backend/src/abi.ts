@@ -14,13 +14,6 @@ export const TREASURY_ABI = [
     outputs: [{ name: "", type: "uint256" }],
   },
   {
-    name: "getAiCap",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
     name: "isDue",
     type: "function",
     stateMutability: "view",
@@ -59,10 +52,7 @@ export const TREASURY_ABI = [
     name: "executePayment",
     type: "function",
     stateMutability: "nonpayable",
-    inputs: [
-      { name: "paymentId", type: "uint256" },
-      { name: "ogProofHash", type: "string" },
-    ],
+    inputs: [{ name: "paymentId", type: "uint256" }],
     outputs: [],
   },
   {
@@ -92,15 +82,6 @@ export const TREASURY_ABI = [
     inputs: [
       { name: "user", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    name: "AuditLog",
-    type: "event",
-    inputs: [
-      { name: "paymentId", type: "uint256", indexed: true },
-      { name: "ogProofHash", type: "string", indexed: false },
-      { name: "executedBy", type: "address", indexed: false },
     ],
   },
 ] as const;

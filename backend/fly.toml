@@ -1,0 +1,19 @@
+# Fly.io config for the USDC treasury scheduler.
+# This is a background worker — no inbound HTTP, no [[services]] block.
+
+app = "usdc-treasury-scheduler"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ARC_RPC_URL = "https://rpc.testnet.arc.network"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  cpus = 1
+
+# Always-on: scheduler must keep running for cron + event watching.
+# Do not enable auto-stop.

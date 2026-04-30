@@ -8,19 +8,17 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title USDCTreasury
- * @notice USDC treasury with recurring payments and AI agent integration
- * @dev Deployed on Arc Testnet. USDC address: 0x3600000000000000000000000000000000000000
+ * @notice Permissionless USDC treasury with scheduled, recurring and batch payments on Arc.
+ * @dev Each depositor controls their own balance and can pay any address.
  */
 contract USDCTreasury is AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant AI_EXECUTOR_ROLE = keccak256("AI_EXECUTOR_ROLE");
-    bytes32 public constant SCHEDULER_ROLE   = keccak256("SCHEDULER_ROLE");
+    bytes32 public constant SCHEDULER_ROLE = keccak256("SCHEDULER_ROLE");
 
     IERC20 public immutable usdc;
 
     mapping(address => uint256) public userBalances;
-    mapping(address => bool) public allowlisted;
 
     struct Payment {
         address owner;
@@ -36,8 +34,7 @@ contract USDCTreasury is AccessControl, ReentrancyGuard {
     uint256 public nextPaymentId;
 
     uint256 public maxSingleTx = 10_000 * 1e6;
-    uint256 public aiCapBps    = 500;
-    uint256 public minBalance  = 100 * 1e6;
+    uint256 public minBalance  = 0;
     bool    public paused;
 
     event Deposited(address indexed user, uint256 amount);
@@ -45,20 +42,10 @@ contract USDCTreasury is AccessControl, ReentrancyGuard {
     event PaymentScheduled(uint256 indexed paymentId, address indexed owner, address indexed recipient, uint256 amount, uint64 frequency);
     event PaymentExecuted(uint256 indexed paymentId, address indexed recipient, uint256 amount, address executedBy);
     event PaymentCancelled(uint256 indexed paymentId);
-    event AllowlistUpdated(address indexed recipient, bool status);
-    event AiCapUpdated(uint256 newCapBps);
     event EmergencyPause(bool paused);
-    event AuditLog(uint256 indexed paymentId, string ogProofHash, address executedBy);
 
     modifier whenNotPaused() {
         require(!paused, "Treasury: paused");
-        _;
-    }
-
-    modifier withinAiCap(uint256 amount) {
-        uint256 totalBalance = usdc.balanceOf(address(this));
-        uint256 cap = (totalBalance * aiCapBps) / 10_000;
-        require(amount <= cap, "Treasury: exceeds AI cap");
         _;
     }
 
@@ -90,7 +77,7 @@ contract USDCTreasury is AccessControl, ReentrancyGuard {
         uint64  frequency,
         uint64  delaySeconds
     ) external whenNotPaused returns (uint256 paymentId) {
-        require(allowlisted[recipient], "Treasury: recipient not allowlisted");
+        require(recipient != address(0), "Treasury: zero recipient");
         require(amount > 0 && amount <= maxSingleTx, "Treasury: invalid amount");
         require(userBalances[msg.sender] >= amount, "Treasury: insufficient balance");
 
@@ -108,26 +95,53 @@ contract USDCTreasury is AccessControl, ReentrancyGuard {
         emit PaymentScheduled(paymentId, msg.sender, recipient, amount, frequency);
     }
 
-    function executePayment(
-        uint256 paymentId,
-        string calldata ogProofHash
-    ) external whenNotPaused nonReentrant {
+    /// @notice Schedule N payments in one tx (e.g. salary to multiple wallets at once).
+    /// All four arrays must be the same length.
+    function schedulePaymentBatch(
+        address[] calldata recipients,
+        uint256[] calldata amounts,
+        uint64[]  calldata frequencies,
+        uint64[]  calldata delaysSeconds
+    ) external whenNotPaused returns (uint256[] memory paymentIds) {
+        uint256 len = recipients.length;
+        require(len > 0, "Treasury: empty batch");
+        require(amounts.length == len && frequencies.length == len && delaysSeconds.length == len,
+            "Treasury: array length mismatch");
+
+        uint256 senderBalance = userBalances[msg.sender];
+        uint256 totalAmount = 0;
+        for (uint256 i = 0; i < len; i++) {
+            require(recipients[i] != address(0), "Treasury: zero recipient");
+            require(amounts[i] > 0 && amounts[i] <= maxSingleTx, "Treasury: invalid amount");
+            totalAmount += amounts[i];
+        }
+        require(senderBalance >= totalAmount, "Treasury: insufficient balance for batch");
+
+        paymentIds = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
+            uint256 paymentId = nextPaymentId++;
+            payments[paymentId] = Payment({
+                owner:            msg.sender,
+                recipient:        recipients[i],
+                amount:           amounts[i],
+                frequency:        frequencies[i],
+                nextExecTime:     uint64(block.timestamp) + delaysSeconds[i],
+                active:           true,
+                requiresApproval: amounts[i] >= (maxSingleTx / 2)
+            });
+            paymentIds[i] = paymentId;
+            emit PaymentScheduled(paymentId, msg.sender, recipients[i], amounts[i], frequencies[i]);
+        }
+    }
+
+    function executePayment(uint256 paymentId) external whenNotPaused nonReentrant {
         Payment storage p = payments[paymentId];
         require(p.active, "Treasury: payment not active");
         require(block.timestamp >= p.nextExecTime, "Treasury: too early");
-        require(allowlisted[p.recipient], "Treasury: recipient removed from allowlist");
-
-        if (hasRole(AI_EXECUTOR_ROLE, msg.sender)) {
-            uint256 totalBalance = usdc.balanceOf(address(this));
-            uint256 cap = (totalBalance * aiCapBps) / 10_000;
-            require(p.amount <= cap, "Treasury: AI cap exceeded");
-        } else {
-            require(
-                hasRole(SCHEDULER_ROLE, msg.sender) || hasRole(DEFAULT_ADMIN_ROLE, msg.sender),
-                "Treasury: unauthorized"
-            );
-        }
-
+        require(
+            hasRole(SCHEDULER_ROLE, msg.sender) || hasRole(DEFAULT_ADMIN_ROLE, msg.sender),
+            "Treasury: unauthorized"
+        );
         require(userBalances[p.owner] >= p.amount, "Treasury: owner insufficient balance");
 
         userBalances[p.owner] -= p.amount;
@@ -141,10 +155,6 @@ contract USDCTreasury is AccessControl, ReentrancyGuard {
         usdc.safeTransfer(p.recipient, p.amount);
 
         emit PaymentExecuted(paymentId, p.recipient, p.amount, msg.sender);
-
-        if (bytes(ogProofHash).length > 0) {
-            emit AuditLog(paymentId, ogProofHash, msg.sender);
-        }
     }
 
     function cancelPayment(uint256 paymentId) external {
@@ -152,24 +162,6 @@ contract USDCTreasury is AccessControl, ReentrancyGuard {
         require(p.owner == msg.sender || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Treasury: unauthorized");
         p.active = false;
         emit PaymentCancelled(paymentId);
-    }
-
-    function setAllowlist(address recipient, bool status) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        allowlisted[recipient] = status;
-        emit AllowlistUpdated(recipient, status);
-    }
-
-    function setAllowlistBatch(address[] calldata recipients, bool status) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < recipients.length; i++) {
-            allowlisted[recipients[i]] = status;
-            emit AllowlistUpdated(recipients[i], status);
-        }
-    }
-
-    function setAiCap(uint256 newCapBps) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(newCapBps <= 1000, "Treasury: cap max 10%");
-        aiCapBps = newCapBps;
-        emit AiCapUpdated(newCapBps);
     }
 
     function setMaxSingleTx(uint256 newMax) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -185,20 +177,12 @@ contract USDCTreasury is AccessControl, ReentrancyGuard {
         emit EmergencyPause(_paused);
     }
 
-    function revokeAiRole(address aiExecutor) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _revokeRole(AI_EXECUTOR_ROLE, aiExecutor);
-    }
-
     function getPayment(uint256 paymentId) external view returns (Payment memory) {
         return payments[paymentId];
     }
 
     function getTotalBalance() external view returns (uint256) {
         return usdc.balanceOf(address(this));
-    }
-
-    function getAiCap() external view returns (uint256) {
-        return (usdc.balanceOf(address(this)) * aiCapBps) / 10_000;
     }
 
     function isDue(uint256 paymentId) external view returns (bool) {

@@ -14,7 +14,6 @@ describe("USDCTreasury", () => {
     const ADMIN_ROLE = ethers.ZeroHash;
     expect(await treasury.hasRole(ADMIN_ROLE, admin.address)).to.be.true;
     expect(await treasury.paused()).to.be.false;
-    expect(await treasury.aiCapBps()).to.equal(500n);
   });
 
   it("deposits and withdraws correctly", async () => {

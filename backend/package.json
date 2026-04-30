@@ -4,7 +4,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsx src/scheduler/index.ts",
+    "start:once": "tsx src/scheduler/once.ts",
     "scheduler": "tsx --env-file=.env src/scheduler/index.ts",
+    "scheduler:once": "tsx --env-file=.env src/scheduler/once.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
