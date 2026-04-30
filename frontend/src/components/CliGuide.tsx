@@ -11,8 +11,8 @@ const SETUP: Cmd[] = [
   {
     name: "1. Clone & install",
     desc: "Get the repo and install backend deps.",
-    code: `git clone https://github.com/paiin-arc/usdc-treasury-build.git
-cd usdc-treasury-build/backend
+    code: `git clone https://github.com/paiin-arc/cadence-treasury.git
+cd cadence-treasury/backend
 npm install`,
   },
   {
@@ -159,7 +159,7 @@ export default function CliGuide() {
           </div>
           <a
             className="cli-github"
-            href="https://github.com/paiin-arc/usdc-treasury-build"
+            href="https://github.com/paiin-arc/cadence-treasury"
             target="_blank"
             rel="noreferrer"
           >
