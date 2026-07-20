@@ -1,9 +1,9 @@
 import { publicClient } from "./arc";
 
 export function isRpcConfirmationError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error ?? "");
+  const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
   return (
-    message.includes("RPC Request failed") ||
+    message.includes("rpc request failed") ||
     message.includes("request limit reached") ||
     message.includes("429") ||
     message.includes("rate limit") ||
@@ -14,7 +14,7 @@ export function isRpcConfirmationError(error: unknown) {
 export async function waitForConfirmation(
   hash: `0x${string}`,
   label: string,
-  timeout = 60_000
+  timeout = 120_000
 ) {
   try {
     const receipt = await publicClient.waitForTransactionReceipt({

@@ -58,31 +58,52 @@ async function runWithConcurrency<T>(
   return results;
 }
 
+import { parseEventLogs } from "viem";
+
+let cachedTreasuryLogsPromise: Promise<any[]> | null = null;
+let cachedTreasuryLogsTimestamp = 0;
+
+async function getAllTreasuryLogs(): Promise<any[]> {
+  const now = Date.now();
+  if (cachedTreasuryLogsPromise && now - cachedTreasuryLogsTimestamp < 10000) {
+    return cachedTreasuryLogsPromise;
+  }
+  
+  cachedTreasuryLogsTimestamp = now;
+  cachedTreasuryLogsPromise = (async () => {
+    const latest = await publicClient.getBlockNumber();
+    const ranges: { from: bigint; to: bigint }[] = [];
+    let to = latest;
+    for (let i = 0; i < MAX_CHUNKS; i++) {
+      const from = to > CHUNK_SIZE ? to - CHUNK_SIZE : 0n;
+      ranges.push({ from, to });
+      if (from === 0n) break;
+      to = from - 1n;
+    }
+    const tasks = ranges.map(({ from, to }) => async () => {
+      try {
+        return await publicClient.getLogs({
+          address: TREASURY_ADDRESS,
+          fromBlock: from,
+          toBlock: to,
+        });
+      } catch {
+        return [];
+      }
+    });
+    const results = await runWithConcurrency(tasks, CONCURRENCY);
+    const rawLogs = results.flat();
+    return parseEventLogs({ abi: TREASURY_ABI, logs: rawLogs });
+  })();
+  
+  return cachedTreasuryLogsPromise;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function paginatedLogs<T = any>(event: any): Promise<T[]> {
-  const latest = await publicClient.getBlockNumber();
-  const ranges: { from: bigint; to: bigint }[] = [];
-  let to = latest;
-  for (let i = 0; i < MAX_CHUNKS; i++) {
-    const from = to > CHUNK_SIZE ? to - CHUNK_SIZE : 0n;
-    ranges.push({ from, to });
-    if (from === 0n) break;
-    to = from - 1n;
-  }
-  const tasks = ranges.map(({ from, to }) => async () => {
-    try {
-      return await publicClient.getLogs({
-        address: TREASURY_ADDRESS,
-        event,
-        fromBlock: from,
-        toBlock: to,
-      });
-    } catch {
-      return [];
-    }
-  });
-  const results = await runWithConcurrency(tasks, CONCURRENCY);
-  return results.flat() as T[];
+  const eventName = event.name;
+  const parsedLogs = await getAllTreasuryLogs();
+  return parsedLogs.filter((l) => l.eventName === eventName) as unknown as T[];
 }
 
 export function useTreasuryBalance() {
@@ -384,7 +405,7 @@ export function useAnalytics(walletAddress: string | undefined) {
       if (!walletAddress) {
         return { agentLogs: [], failedTxs: [] };
       }
-      
+
       const res = await fetch(`${BACKEND_URL}/api/analytics?wallet=${walletAddress.toLowerCase()}`);
       if (!res.ok) {
         throw new Error("Failed to fetch analytics");

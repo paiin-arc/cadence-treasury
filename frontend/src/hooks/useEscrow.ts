@@ -28,31 +28,51 @@ async function runWithConcurrency<T>(
   return results;
 }
 
-async function paginatedLogs(event: unknown, address: `0x${string}`) {
-  const latest = await publicClient.getBlockNumber();
-  const ranges: { from: bigint; to: bigint }[] = [];
-  let to = latest;
-  for (let i = 0; i < MAX_CHUNKS; i++) {
-    const from = to > CHUNK_SIZE ? to - CHUNK_SIZE : 0n;
-    ranges.push({ from, to });
-    if (from === 0n) break;
-    to = from - 1n;
+import { parseEventLogs } from "viem";
+
+let cachedEscrowLogsPromise: Promise<any[]> | null = null;
+let cachedEscrowLogsTimestamp = 0;
+
+async function getAllEscrowLogs(address: `0x${string}`): Promise<any[]> {
+  const now = Date.now();
+  if (cachedEscrowLogsPromise && now - cachedEscrowLogsTimestamp < 10000) {
+    return cachedEscrowLogsPromise;
   }
-  const tasks = ranges.map(({ from, to }) => async () => {
-    try {
-      return await publicClient.getLogs({
-        address,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        event: event as any,
-        fromBlock: from,
-        toBlock: to,
-      });
-    } catch {
-      return [];
+  
+  cachedEscrowLogsTimestamp = now;
+  cachedEscrowLogsPromise = (async () => {
+    const latest = await publicClient.getBlockNumber();
+    const ranges: { from: bigint; to: bigint }[] = [];
+    let to = latest;
+    for (let i = 0; i < MAX_CHUNKS; i++) {
+      const from = to > CHUNK_SIZE ? to - CHUNK_SIZE : 0n;
+      ranges.push({ from, to });
+      if (from === 0n) break;
+      to = from - 1n;
     }
-  });
-  const results = await runWithConcurrency(tasks, CONCURRENCY);
-  return results.flat();
+    const tasks = ranges.map(({ from, to }) => async () => {
+      try {
+        return await publicClient.getLogs({
+          address,
+          fromBlock: from,
+          toBlock: to,
+        });
+      } catch {
+        return [];
+      }
+    });
+    const results = await runWithConcurrency(tasks, CONCURRENCY);
+    const rawLogs = results.flat();
+    return parseEventLogs({ abi: ESCROW_ABI, logs: rawLogs });
+  })();
+  
+  return cachedEscrowLogsPromise;
+}
+
+async function paginatedLogs(event: any, address: `0x${string}`) {
+  const eventName = event.name;
+  const parsedLogs = await getAllEscrowLogs(address);
+  return parsedLogs.filter((l) => l.eventName === eventName);
 }
 
 export type EscrowPayment = {
@@ -84,7 +104,7 @@ export function useEscrowPayments() {
         address: ESCROW_ADDRESS,
         abi: ESCROW_ABI,
         functionName: "nonce",
-      })) as bigint;
+      } as any)) as bigint;
 
       const N = Number(nonce);
       if (N === 0) return [];
@@ -112,7 +132,7 @@ export function useEscrowPayments() {
           abi: ESCROW_ABI,
           functionName: "payments",
           args: [BigInt(i)],
-        })) as readonly [string, bigint, bigint, string, bigint, boolean];
+        } as any)) as readonly [string, bigint, bigint, string, bigint, boolean];
 
         const [to, amount, , refundTo, withdrawnAmount, refunded] = p;
 
@@ -165,7 +185,7 @@ export function useEscrowArbiter() {
         address: ESCROW_ADDRESS,
         abi: ESCROW_ABI,
         functionName: "arbiter",
-      })) as string;
+      } as any)) as string;
       return arb.toLowerCase();
     },
     staleTime: 5 * 60_000,

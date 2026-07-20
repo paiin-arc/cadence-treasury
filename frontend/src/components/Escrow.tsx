@@ -140,7 +140,7 @@ export default function Escrow() {
           functionName: "approve",
           args: [escrowAddr, amt],
           ...(await safeFees()),
-        });
+        } as any);
         const receipt = await waitForConfirmation(approveHash, "Approve");
         if (!receipt) {
           setMsg({
@@ -163,7 +163,7 @@ export default function Escrow() {
         functionName: "pay",
         args: [recipient.toLowerCase() as `0x${string}`, amt, address as `0x${string}`],
         ...(await safeFees()),
-      });
+      } as any);
       const receipt = await waitForConfirmation(hash, "Pay");
       if (!receipt) {
         setMsg({
@@ -206,7 +206,7 @@ export default function Escrow() {
         functionName: "withdraw",
         args: [[p.id]],
         ...(await safeFees()),
-      });
+      } as any);
       setMsg({ kind: "ok", text: `Withdraw sent (${hash.slice(0, 10)}…)…` });
       const receipt = await waitForConfirmation(hash, "Withdraw");
       setMsg({
@@ -238,7 +238,7 @@ export default function Escrow() {
         functionName: "refundByRecipient",
         args: [p.id],
         ...(await safeFees()),
-      });
+      } as any);
       setMsg({ kind: "ok", text: `Refund sent (${hash.slice(0, 10)}…)…` });
       const receipt = await waitForConfirmation(hash, "Refund");
       setMsg({

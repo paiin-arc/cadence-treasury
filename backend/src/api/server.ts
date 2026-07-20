@@ -55,7 +55,7 @@ app.get("/api/health", (c) =>
 app.get("/api/analytics", (c) => {
   const wallet = c.req.query("wallet")?.toLowerCase();
   const db = loadDb();
-  
+
   if (!wallet) {
     return c.json({
       agentLogs: db.agentLogs,

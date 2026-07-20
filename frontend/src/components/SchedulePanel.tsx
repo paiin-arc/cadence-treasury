@@ -108,7 +108,7 @@ export default function SchedulePanel() {
           BigInt(delay * 60),
         ],
         ...(await safeFees()),
-      });
+      } as any);
       setMsg({
         kind: "ok",
         text: `Payment sent (${hash.slice(0, 10)}…), waiting…`,
@@ -135,10 +135,10 @@ export default function SchedulePanel() {
           const decoded = decodeEventLog({
             abi: TREASURY_ABI,
             data: log.data,
-            topics: log.topics,
+            topics: (log as any).topics,
           });
-          if (decoded.eventName === "PaymentScheduled") {
-            paymentId = (decoded.args as { paymentId: bigint }).paymentId.toString();
+          if ((decoded as any).eventName === "PaymentScheduled") {
+            paymentId = ((decoded as any).args as { paymentId: bigint }).paymentId.toString();
             break;
           }
         } catch {

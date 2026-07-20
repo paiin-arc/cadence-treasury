@@ -134,7 +134,7 @@ export default function MultiPayPanel() {
         functionName: "schedulePaymentBatch",
         args: [recipients, amounts, frequencies, delays],
         ...(await safeFees()),
-      });
+      } as any);
 
       setMsg({ kind: "ok", text: `Sent (${hash.slice(0, 10)}…), waiting for confirmation…` });
 
@@ -158,10 +158,10 @@ export default function MultiPayPanel() {
           const decoded = decodeEventLog({
             abi: TREASURY_ABI,
             data: log.data,
-            topics: log.topics,
+            topics: (log as any).topics,
           });
-          if (decoded.eventName === "PaymentScheduled") {
-            scheduledIds.push((decoded.args as { paymentId: bigint }).paymentId.toString());
+          if ((decoded as any).eventName === "PaymentScheduled") {
+            scheduledIds.push(((decoded as any).args as { paymentId: bigint }).paymentId.toString());
           }
         } catch {
           /* not a treasury event */

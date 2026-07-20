@@ -229,8 +229,8 @@ export default function DepositModal({ isOpen, onClose, onSuccess }: DepositModa
           {busy === "approve"
             ? "1/2 Approving USDC…"
             : busy === "deposit"
-            ? "2/2 Depositing USDC…"
-            : "Deposit USDC"}
+              ? "2/2 Depositing USDC…"
+              : "Deposit USDC"}
         </button>
 
         {/* Transaction Status Msg */}

@@ -76,17 +76,17 @@ export function logAgentAction(log: Omit<AgentLog, "id" | "timestamp">): AgentLo
 
 export function recordFailedTx(tx: Omit<FailedTx, "timestamp" | "retryCount" | "state">): FailedTx {
   const db = loadDb();
-  
+
   // Find if this specific payment ID already has a retrying transaction
   const existingIndex = db.failedTxs.findIndex(
     (f) => f.paymentId === tx.paymentId && f.state === "Retrying"
   );
-  
+
   let retryCount = 1;
   let state: FailedTx["state"] = "Retrying";
-  
+
   let record: FailedTx;
-  
+
   if (existingIndex !== -1) {
     retryCount = db.failedTxs[existingIndex].retryCount + 1;
     if (retryCount >= 3) {
@@ -109,7 +109,7 @@ export function recordFailedTx(tx: Omit<FailedTx, "timestamp" | "retryCount" | "
     };
     db.failedTxs.unshift(record);
   }
-  
+
   saveDb(db);
   return record;
 }
