@@ -375,6 +375,8 @@ export type AnalyticsData = {
   failedTxs: FailedTx[];
 };
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (import.meta.env.DEV ? "http://localhost:8080" : "https://cadence-treasury-backend.onrender.com");
+
 export function useAnalytics(walletAddress: string | undefined) {
   return useQuery<AnalyticsData>({
     queryKey: ["analytics", walletAddress],
@@ -383,7 +385,7 @@ export function useAnalytics(walletAddress: string | undefined) {
         return { agentLogs: [], failedTxs: [] };
       }
       
-      const res = await fetch(`http://localhost:8080/api/analytics?wallet=${walletAddress.toLowerCase()}`);
+      const res = await fetch(`${BACKEND_URL}/api/analytics?wallet=${walletAddress.toLowerCase()}`);
       if (!res.ok) {
         throw new Error("Failed to fetch analytics");
       }
