@@ -7,11 +7,8 @@ import Sidebar, { type TabId } from "./components/Sidebar";
 import Header from "./components/Header";
 import HeroTreasuryCard from "./components/HeroTreasuryCard";
 import StatsRow from "./components/StatsRow";
-import AnalyticsCharts from "./components/AnalyticsCharts";
-import TreasuryInsights from "./components/TreasuryInsights";
 import UpcomingPaymentsWidget from "./components/UpcomingPaymentsWidget";
 import TransactionsHistory from "./components/TransactionsHistory";
-import FailedTransactions from "./components/FailedTransactions";
 import AgentActivity from "./components/AgentActivity";
 
 import SchedulePanel from "./components/SchedulePanel";
@@ -24,7 +21,7 @@ import Docs from "./components/Docs";
 import CliGuide from "./components/CliGuide";
 import Landing from "./Landing";
 
-import { useAnalytics, useTransactionsHistory, usePayments } from "./hooks/useTreasury";
+import { useAnalytics } from "./hooks/useTreasury";
 
 const queryClient = new QueryClient();
 
@@ -53,8 +50,6 @@ function AppContent() {
 
   const { address } = useAccount();
   const { data: analyticsData } = useAnalytics(address);
-  const { data: historyItems } = useTransactionsHistory();
-  const { data: payments } = usePayments(20);
 
   useEffect(() => {
     const onHash = () => setTab(readHashTab());
@@ -77,7 +72,6 @@ function AppContent() {
 
   const failedCount = analyticsData?.failedTxs?.length ?? 0;
   const agentLogs = analyticsData?.agentLogs ?? [];
-  const failedTxs = analyticsData?.failedTxs ?? [];
 
   if (tab === "landing") {
     return <Landing />;
@@ -85,7 +79,6 @@ function AppContent() {
 
   return (
     <div className={`app-redesigned-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      {/* 1. Redesigned Sidebar */}
       <Sidebar
         currentTab={tab}
         onSelectTab={switchTab}
@@ -93,9 +86,7 @@ function AppContent() {
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
 
-      {/* 2. Main Content Viewport */}
       <div className="app-main-viewport">
-        {/* Top Header */}
         <Header
           currentTab={tab}
           agentLogs={agentLogs}
@@ -103,48 +94,26 @@ function AppContent() {
           onSearchChange={setSearchQuery}
         />
 
-        {/* Tab Body Content */}
         <main className="app-tab-container">
           {tab === "dashboard" && (
             <div className="dashboard-content-flow">
-              {/* Hero Treasury Card */}
+              {/* Single source of truth: Balance + Actions + Metadata */}
               <HeroTreasuryCard
                 agentLogs={agentLogs}
                 onActionClick={handleHeroAction}
               />
 
-              {/* 7-Card Analytics Stats Row */}
-              <StatsRow
-                failedCount={failedCount}
-                pendingCount={0}
-              />
+              {/* 4 clean analytics cards — no balance duplicate */}
+              <StatsRow failedCount={failedCount} pendingCount={0} />
 
-              {/* 100% Real Dynamic Analytics Charts */}
-              <AnalyticsCharts
-                historyItems={historyItems ?? []}
-                agentLogs={agentLogs}
-                failedTxs={failedTxs}
-                scheduledPaymentsCount={payments?.length ?? 0}
-              />
-
-              {/* Real Treasury Insights & Benchmarks */}
-              <TreasuryInsights
-                historyItems={historyItems ?? []}
-                agentLogs={agentLogs}
-                activeSchedulesCount={payments?.length ?? 0}
-              />
-
-              {/* Main Transaction Center Table */}
+              {/* Transaction history feed */}
               <TransactionsHistory searchQuery={searchQuery} />
 
-              {/* Grid Section: Scheduled Queue & Agent Activity */}
+              {/* Upcoming schedules + Agent activity */}
               <div className="grid-2-cols">
                 <UpcomingPaymentsWidget />
                 <AgentActivity logs={agentLogs} />
               </div>
-
-              {/* Failed Transaction Tracker */}
-              <FailedTransactions failedTxs={failedTxs} />
             </div>
           )}
 
