@@ -551,28 +551,6 @@ export default function AppKitPanel() {
               </div>
             </div>
 
-            {/* CCTP Network Support Matrix Table */}
-            <div className="cctp-matrix-card">
-              <h4>Supported CCTP Domains & Status</h4>
-              <div className="matrix-table">
-                {Object.values(CHAIN_METADATA_MAP).map((net) => (
-                  <div key={net.value} className="matrix-row">
-                    <div className="net-col">
-                      <net.Logo size={18} />
-                      <span className="net-name">{net.name}</span>
-                    </div>
-                    <div className="domain-col">Domain #{net.cctpDomain}</div>
-                    <div className="usdc-col">
-                      <span className="status-pill green">Native USDC</span>
-                    </div>
-                    <div className="status-col">
-                      <span className="status-pill blue">CCTP Active</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="field-group" style={{ marginTop: 18 }}>
               <label className="input-label">Recipient Address</label>
               <input
@@ -804,15 +782,7 @@ export default function AppKitPanel() {
               <span className="cctp-chip">Arc DEX Swaps</span>
             </div>
 
-            <div className="swap-routes-card">
-              <h4>Available DEX Liquidity Routes</h4>
-              <div className="route-tags">
-                <span className="route-pill active">🟢 USDC / EURC (Active Route)</span>
-                <span className="route-pill pending">🚧 USDC / cirBTC (Coming Soon)</span>
-              </div>
-            </div>
-
-            <div className="field-row two" style={{ marginTop: 18 }}>
+            <div className="field-row two">
               <div className="chain-select-box">
                 <span className="box-label">Pay Token</span>
                 <select

@@ -14,8 +14,8 @@ export interface ChainMetadata {
 export const ARC_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className}>
     <circle cx="16" cy="16" r="16" fill="#F97316" />
-    <path d="M16 6L25 24H7L16 6Z" fill="#09090B" />
-    <circle cx="16" cy="16" r="4" fill="#F97316" />
+    <path d="M16 7L24 23H19.5L16 15.5L12.5 23H8L16 7Z" fill="#09090B" />
+    <path d="M13.5 18H18.5L16 13L13.5 18Z" fill="#F97316" />
   </svg>
 );
 
