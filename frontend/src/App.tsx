@@ -22,17 +22,15 @@ import MultiPayPanel from "./components/MultiPayPanel";
 import AppKitPanel from "./components/AppKitPanel";
 import Docs from "./components/Docs";
 import CliGuide from "./components/CliGuide";
-import Landing from "./Landing";
 
 import { useAnalytics, useTransactionsHistory, usePayments } from "./hooks/useTreasury";
 
 const queryClient = new QueryClient();
 
 function readHashTab(): TabId {
-  if (typeof window === "undefined") return "landing";
+  if (typeof window === "undefined") return "dashboard";
   const h = window.location.hash.replace("#", "");
   if (
-    h === "dashboard" ||
     h === "schedule" ||
     h === "bills" ||
     h === "escrow" ||
@@ -43,7 +41,7 @@ function readHashTab(): TabId {
   ) {
     return h as TabId;
   }
-  return "landing";
+  return "dashboard";
 }
 
 function AppContent() {
@@ -78,10 +76,6 @@ function AppContent() {
   const failedCount = analyticsData?.failedTxs?.length ?? 0;
   const agentLogs = analyticsData?.agentLogs ?? [];
   const failedTxs = analyticsData?.failedTxs ?? [];
-
-  if (tab === "landing") {
-    return <Landing />;
-  }
 
   return (
     <div className={`app-redesigned-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
