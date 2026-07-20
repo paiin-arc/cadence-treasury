@@ -495,16 +495,6 @@ export default function AppKitPanel() {
               <span className="cctp-chip">CCTP v1.5 Protocol</span>
             </div>
 
-            {!HAS_KIT_KEY && (
-              <div className="feature-status-banner warning">
-                <div className="banner-icon">🔌</div>
-                <div className="banner-text">
-                  <strong>CCTP Relayer Integration Pending</strong>
-                  <p>{FEATURE_CAPABILITIES.cctpBridge.reason}</p>
-                </div>
-              </div>
-            )}
-
             <div className="chain-selector-grid">
               <div className="chain-select-box">
                 <span className="box-label">From Source Chain</span>
@@ -614,16 +604,6 @@ export default function AppKitPanel() {
               </div>
               <span className="cctp-chip">Circle Gateway</span>
             </div>
-
-            {!HAS_KIT_KEY && (
-              <div className="feature-status-banner info">
-                <div className="banner-icon">ℹ️</div>
-                <div className="banner-text">
-                  <strong>No connected multichain liquidity sources found</strong>
-                  <p>{FEATURE_CAPABILITIES.unifiedGateway.reason}</p>
-                </div>
-              </div>
-            )}
 
             <div className="gateway-balance-actions">
               <button
