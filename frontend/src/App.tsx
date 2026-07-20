@@ -23,6 +23,7 @@ import AppKitPanel from "./components/AppKitPanel";
 import Docs from "./components/Docs";
 import CliGuide from "./components/CliGuide";
 import Landing from "./Landing";
+import WalletGatePreview from "./components/WalletGatePreview";
 
 import { useAnalytics, useTransactionsHistory, usePayments } from "./hooks/useTreasury";
 
@@ -149,15 +150,25 @@ function AppContent() {
           )}
 
           {tab === "schedule" && (
-            <div className="tab-section-flow">
-              <SchedulePanel />
-              <MyPayments />
-            </div>
+            <WalletGatePreview pageTitle="Recurring Payment Schedules">
+              <div className="tab-section-flow">
+                <SchedulePanel />
+                <MyPayments />
+              </div>
+            </WalletGatePreview>
           )}
 
           {tab === "bills" && <Bills />}
-          {tab === "escrow" && <Escrow />}
-          {tab === "multipay" && <MultiPayPanel />}
+          {tab === "escrow" && (
+            <WalletGatePreview pageTitle="Milestone Escrow Vaults">
+              <Escrow />
+            </WalletGatePreview>
+          )}
+          {tab === "multipay" && (
+            <WalletGatePreview pageTitle="Multi-Pay Batch Payroll">
+              <MultiPayPanel />
+            </WalletGatePreview>
+          )}
           {tab === "appkit" && <AppKitPanel />}
           {tab === "docs" && <Docs />}
           {tab === "cli" && <CliGuide />}
