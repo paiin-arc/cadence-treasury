@@ -6548,6 +6548,177 @@ a.stat-sub:hover { color: var(--accent); }
   text-decoration: underline;
 }
 
+/* ======================================================
+   GATEWAY FEATURE STATUS & CCTP MATRIX STYLING
+   ====================================================== */
+
+.feature-status-banner {
+  padding: 14px 18px;
+  border-radius: 14px;
+  margin-bottom: 22px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.feature-status-banner.warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #FBBF24;
+}
+
+.feature-status-banner.info {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60A5FA;
+}
+
+.banner-icon {
+  font-size: 20px;
+}
+
+.banner-text strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.banner-text p {
+  font-size: 12px;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.select-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.select-with-icon .chain-logo-svg {
+  position: absolute;
+  left: 12px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.select-with-icon .chain-select-input {
+  padding-left: 40px !important;
+}
+
+.cctp-matrix-card {
+  background: #09090B;
+  border: 1px solid #27272A;
+  border-radius: 16px;
+  padding: 18px;
+  margin: 18px 0;
+}
+
+.cctp-matrix-card h4,
+.swap-routes-card h4 {
+  font-size: 12px;
+  font-weight: 800;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+  letter-spacing: 0.04em;
+}
+
+.matrix-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.matrix-row {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr 1fr 1fr;
+  align-items: center;
+  padding: 10px 14px;
+  background: #111827;
+  border-radius: 10px;
+  border: 1px solid #1F2937;
+}
+
+.net-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #F9FAFB;
+}
+
+.domain-col {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+.status-pill.green {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10B981;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  text-align: center;
+}
+
+.status-pill.blue {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3B82F6;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  text-align: center;
+}
+
+.cctp-chip.green {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #10B981;
+}
+
+.swap-routes-card {
+  background: #09090B;
+  border: 1px solid #27272A;
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.route-tags {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.route-pill.active {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10B981;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 10px;
+}
+
+.route-pill.pending {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #FBBF24;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 10px;
+}
+
+
 
 
 
