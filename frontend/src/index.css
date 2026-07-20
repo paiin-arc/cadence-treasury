@@ -5960,6 +5960,128 @@ a.stat-sub:hover { color: var(--accent); }
   font-size: 12px;
 }
 
+/* ======================================================
+   SCHEDULED PAYMENTS TABLE UX REFINEMENT STYLING
+   ====================================================== */
+
+.schedule-sub-meta {
+  font-size: 12px;
+  color: #9CA3AF;
+  font-weight: 500;
+  display: block;
+  margin-top: 2px;
+}
+
+.payments-loading {
+  padding: 30px;
+  text-align: center;
+  color: #6B7280;
+  font-size: 13px;
+}
+
+.payments-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 42px 20px;
+  text-align: center;
+  background: #09090B;
+  border: 1px solid #27272A;
+  border-radius: 16px;
+  margin-top: 14px;
+}
+
+.payments-empty-state .empty-cal-icon {
+  font-size: 38px;
+  margin-bottom: 8px;
+}
+
+.payments-empty-state h4 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #F9FAFB;
+  margin: 0 0 6px;
+}
+
+.payments-empty-state p {
+  font-size: 12px;
+  color: #6B7280;
+  max-width: 360px;
+  margin: 0 0 16px;
+}
+
+.create-schedule-btn {
+  background: #F97316;
+  color: #09090B;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(249, 115, 22, 0.25);
+  transition: all 0.2s ease;
+}
+
+.create-schedule-btn:hover {
+  background: #FB923C;
+  transform: translateY(-1px);
+}
+
+.payments-scroll-wrapper {
+  position: relative;
+  transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.payments-scroll-wrapper.expanded {
+  max-height: 520px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid #27272A;
+  scrollbar-width: thin;
+  scrollbar-color: #27272A #09090B;
+}
+
+.payments-scroll-wrapper.expanded .payments-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #111827;
+  box-shadow: 0 1px 0 #27272A;
+}
+
+.payments-expand-bar {
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
+  margin-top: 14px;
+  border-top: 1px dashed #27272A;
+}
+
+.view-all-payments-btn {
+  background: #1F2937;
+  border: 1px solid #27272A;
+  color: #F9FAFB;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 20px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-all-payments-btn:hover {
+  border-color: #F97316;
+  color: #F97316;
+  background: rgba(249, 115, 22, 0.1);
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.15);
+}
+
+
 
 
 
