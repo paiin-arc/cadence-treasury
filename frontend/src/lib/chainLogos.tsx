@@ -1,4 +1,9 @@
 import type { FC } from "react";
+import arcLogoUrl from "../assets/arc.png";
+import arbLogoUrl from "../assets/arb.png";
+import ethLogoUrl from "../assets/eth.png";
+import avaxLogoUrl from "../assets/avax.png";
+import usdcLogoUrl from "../assets/usdc.png";
 
 export interface ChainMetadata {
   name: string;
@@ -11,22 +16,37 @@ export interface ChainMetadata {
   Logo: FC<{ className?: string; size?: number }>;
 }
 
+export const USDC_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
+  <img
+    src={usdcLogoUrl}
+    alt="USDC"
+    width={size}
+    height={size}
+    className={className}
+    style={{ borderRadius: "50%", objectFit: "contain", display: "inline-block", verticalAlign: "middle" }}
+  />
+);
+
 export const ARC_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className}>
-    <circle cx="16" cy="16" r="16" fill="#F97316" />
-    <path d="M16 7L24 23H19.5L16 15.5L12.5 23H8L16 7Z" fill="#09090B" />
-    <path d="M13.5 18H18.5L16 13L13.5 18Z" fill="#F97316" />
-  </svg>
+  <img
+    src={arcLogoUrl}
+    alt="Arc"
+    width={size}
+    height={size}
+    className={className}
+    style={{ borderRadius: "50%", objectFit: "contain", display: "inline-block", verticalAlign: "middle" }}
+  />
 );
 
 export const ETHEREUM_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className}>
-    <circle cx="16" cy="16" r="16" fill="#627EEA" />
-    <path d="M16 4L15.7 5V20.1L16 20.4L23.5 16L16 4Z" fill="#FFFFFF" fillOpacity="0.6" />
-    <path d="M16 4L8.5 16L16 20.4V5V4Z" fill="#FFFFFF" />
-    <path d="M16 21.8L15.8 22V27.7L16 28L23.5 17.5L16 21.8Z" fill="#FFFFFF" fillOpacity="0.6" />
-    <path d="M16 28V21.8L8.5 17.5L16 28Z" fill="#FFFFFF" />
-  </svg>
+  <img
+    src={ethLogoUrl}
+    alt="Ethereum"
+    width={size}
+    height={size}
+    className={className}
+    style={{ borderRadius: "50%", objectFit: "contain", display: "inline-block", verticalAlign: "middle" }}
+  />
 );
 
 export const BASE_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
@@ -36,11 +56,26 @@ export const BASE_LOGO: FC<{ className?: string; size?: number }> = ({ className
   </svg>
 );
 
+export const ARBITRUM_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
+  <img
+    src={arbLogoUrl}
+    alt="Arbitrum"
+    width={size}
+    height={size}
+    className={className}
+    style={{ borderRadius: "50%", objectFit: "cover", display: "inline-block", verticalAlign: "middle" }}
+  />
+);
+
 export const AVALANCHE_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className}>
-    <circle cx="16" cy="16" r="16" fill="#E84142" />
-    <path d="M11.8 19.5L7.5 27H11.5L14 22.5L11.8 19.5ZM16 6L8.8 18.5H12.8L16 13L19.2 18.5H23.2L16 6ZM20.2 19.5L18 22.5L20.5 27H24.5L20.2 19.5Z" fill="white" />
-  </svg>
+  <img
+    src={avaxLogoUrl}
+    alt="Avalanche"
+    width={size}
+    height={size}
+    className={className}
+    style={{ borderRadius: "50%", objectFit: "contain", display: "inline-block", verticalAlign: "middle" }}
+  />
 );
 
 export const POLYGON_LOGO: FC<{ className?: string; size?: number }> = ({ className = "", size = 20 }) => (
@@ -60,6 +95,16 @@ export const CHAIN_METADATA_MAP: Record<string, ChainMetadata> = {
     cctpStatus: "active",
     explorer: "https://testnet.arcscan.app",
     Logo: ARC_LOGO,
+  },
+  Arbitrum_Sepolia: {
+    name: "Arbitrum Sepolia",
+    value: "Arbitrum_Sepolia",
+    chainId: 421614,
+    cctpDomain: 3,
+    nativeUsdc: true,
+    cctpStatus: "active",
+    explorer: "https://sepolia.arbiscan.io",
+    Logo: ARBITRUM_LOGO,
   },
   Base_Sepolia: {
     name: "Base Sepolia",
@@ -102,3 +147,4 @@ export const CHAIN_METADATA_MAP: Record<string, ChainMetadata> = {
     Logo: POLYGON_LOGO,
   },
 };
+

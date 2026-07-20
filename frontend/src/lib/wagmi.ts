@@ -1,9 +1,10 @@
 import { fallback, http, createConfig } from "wagmi";
 import { injected, metaMask } from "wagmi/connectors";
+import { arbitrumSepolia } from "viem/chains";
 import { arcTestnet, ARC_RPC_URLS } from "./arc";
 
 export const wagmiConfig = createConfig({
-  chains: [arcTestnet],
+  chains: [arcTestnet, arbitrumSepolia],
   connectors: [metaMask(), injected()],
   transports: {
     [arcTestnet.id]: fallback(
@@ -16,6 +17,7 @@ export const wagmiConfig = createConfig({
       ),
       { rank: false }
     ),
+    [arbitrumSepolia.id]: http(),
   },
 });
 
