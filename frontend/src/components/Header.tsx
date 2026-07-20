@@ -12,7 +12,7 @@ interface HeaderProps {
 }
 
 const TAB_TITLES: Record<TabId, { title: string; breadcrumb: string }> = {
-  landing: { title: "Landing Page", breadcrumb: "Cadence / Overview" },
+  landing: { title: "Home", breadcrumb: "Cadence / Home" },
   dashboard: { title: "Treasury Overview", breadcrumb: "Dashboard / Home" },
   schedule: { title: "Recurring Schedules", breadcrumb: "Payments / Schedule" },
   bills: { title: "Accounts & Bills", breadcrumb: "Financials / Bills" },
