@@ -93,7 +93,7 @@ export function useTreasuryBalance() {
         address: TREASURY_ADDRESS,
         abi: TREASURY_ABI,
         functionName: "getTotalBalance",
-      });
+      } as any);
       return Number(raw) / 1e6;
     },
     refetchInterval: 60_000,
@@ -109,7 +109,7 @@ export function usePayments(count: number = 10) {
         address: TREASURY_ADDRESS,
         abi: TREASURY_ABI,
         functionName: "nextPaymentId",
-      });
+      } as any);
 
       const limit = Math.min(Number(nextId), count);
 
@@ -149,18 +149,18 @@ export function usePayments(count: number = 10) {
 
       const payments = [];
       for (const i of ids) {
-        const p = await publicClient.readContract({
+        const p: any = await publicClient.readContract({
           address: TREASURY_ADDRESS,
           abi: TREASURY_ABI,
           functionName: "getPayment",
           args: [BigInt(i)],
-        });
+        } as any);
         const due = await publicClient.readContract({
           address: TREASURY_ADDRESS,
           abi: TREASURY_ABI,
           functionName: "isDue",
           args: [BigInt(i)],
-        });
+        } as any);
         const idKey = i.toString();
         payments.push({
           id: i,
@@ -186,7 +186,7 @@ export function useTreasuryStats() {
           address: TREASURY_ADDRESS,
           abi: TREASURY_ABI,
           functionName: "getTotalBalance",
-        }),
+        } as any),
         paginatedLogs<{ args: { amount?: bigint } }>(DEPOSITED_EVENT),
         paginatedLogs<{ args: { amount?: bigint } }>(PAYMENT_SCHEDULED_EVENT),
         paginatedLogs<{ args: { amount?: bigint } }>(PAYMENT_EXECUTED_EVENT),
