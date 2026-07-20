@@ -44,22 +44,24 @@ type OperationLog = {
   href?: string;
 };
 
+type HubTab = "bridge" | "gateway" | "swap" | "send";
+
 const KIT_KEY = import.meta.env.VITE_CIRCLE_KIT_KEY as string | undefined;
 
 const BRIDGE_TESTNET_CHAINS = [
-  { label: "Arc Testnet", value: "Arc_Testnet" },
-  { label: "Base Sepolia", value: "Base_Sepolia" },
-  { label: "Ethereum Sepolia", value: "Ethereum_Sepolia" },
-  { label: "Avalanche Fuji", value: "Avalanche_Fuji" },
-  { label: "Polygon Amoy", value: "Polygon_Amoy_Testnet" },
+  { label: "Arc Testnet", value: "Arc_Testnet", icon: "🌐" },
+  { label: "Base Sepolia", value: "Base_Sepolia", icon: "🔵" },
+  { label: "Ethereum Sepolia", value: "Ethereum_Sepolia", icon: "💎" },
+  { label: "Avalanche Fuji", value: "Avalanche_Fuji", icon: "🔺" },
+  { label: "Polygon Amoy", value: "Polygon_Amoy_Testnet", icon: "🟣" },
 ] as const;
 
 const UNIFIED_TESTNET_CHAINS = [
-  { label: "Arc Testnet", value: "Arc_Testnet" },
-  { label: "Base Sepolia", value: "Base_Sepolia" },
-  { label: "Ethereum Sepolia", value: "Ethereum_Sepolia" },
-  { label: "Avalanche Fuji", value: "Avalanche_Fuji" },
-  { label: "Polygon Amoy", value: "Polygon_Amoy_Testnet" },
+  { label: "Arc Testnet", value: "Arc_Testnet", icon: "🌐" },
+  { label: "Base Sepolia", value: "Base_Sepolia", icon: "🔵" },
+  { label: "Ethereum Sepolia", value: "Ethereum_Sepolia", icon: "💎" },
+  { label: "Avalanche Fuji", value: "Avalanche_Fuji", icon: "🔺" },
+  { label: "Polygon Amoy", value: "Polygon_Amoy_Testnet", icon: "🟣" },
 ] as const;
 
 const SWAP_TOKENS = ["USDC", "EURC", "cirBTC"] as const;
@@ -97,36 +99,37 @@ const txFromResult = (value: unknown): { hash?: string; href?: string } => {
 };
 
 function short(value: string) {
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
 }
 
 export default function AppKitPanel() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const [activeTab, setActiveTab] = useState<HubTab>("bridge");
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [logs, setLogs] = useState<OperationLog[]>([]);
   const [balances, setBalances] = useState<GetBalancesResult | null>(null);
   const [estimate, setEstimate] = useState<string | null>(null);
 
   const [sendTo, setSendTo] = useState("");
-  const [sendAmount, setSendAmount] = useState("1.00");
+  const [sendAmount, setSendAmount] = useState("10.00");
   const [sendToken, setSendToken] = useState("USDC");
 
   const [bridgeSource, setBridgeSource] = useState<BridgeTestnetChain>(ARC_CHAIN);
   const [bridgeDest, setBridgeDest] = useState<BridgeTestnetChain>("Base_Sepolia");
   const [bridgeRecipient, setBridgeRecipient] = useState("");
-  const [bridgeAmount, setBridgeAmount] = useState("1.00");
+  const [bridgeAmount, setBridgeAmount] = useState("25.00");
 
   const [swapIn, setSwapIn] = useState<(typeof SWAP_TOKENS)[number]>("USDC");
   const [swapOut, setSwapOut] = useState<(typeof SWAP_TOKENS)[number]>("EURC");
-  const [swapAmount, setSwapAmount] = useState("1.00");
+  const [swapAmount, setSwapAmount] = useState("50.00");
   const [slippage, setSlippage] = useState("300");
 
   const [ubSource, setUbSource] = useState<UnifiedTestnetChain>(ARC_CHAIN);
   const [ubDest, setUbDest] = useState<UnifiedTestnetChain>("Base_Sepolia");
   const [ubRecipient, setUbRecipient] = useState("");
-  const [ubAmount, setUbAmount] = useState("1.00");
+  const [ubAmount, setUbAmount] = useState("10.00");
 
   const onWrongChain = isConnected && chainId !== arcTestnet.id;
 
@@ -137,7 +140,7 @@ export default function AppKitPanel() {
   useEffect(() => {
     const handler = (payload: AppKitActions[keyof AppKitActions]) => {
       addLog({
-        action: "App Kit event",
+        action: "Gateway Event",
         status: "event",
         detail: summarize(payload),
       });
@@ -185,7 +188,7 @@ export default function AppKitPanel() {
         addLog({
           action: label,
           status: "done",
-          detail: hash ? `Transaction submitted: ${short(hash)}` : summarize(result),
+          detail: hash ? `Transaction confirmed: ${short(hash)}` : summarize(result),
           href,
         });
       } catch (err) {
@@ -263,295 +266,576 @@ export default function AppKitPanel() {
   );
 
   return (
-    <div className="appkit-panel">
-      <div className="schedule-card appkit-hero">
-        <div className="schedule-header">
-          <div>
-            <h3>Circle App Kit Actions</h3>
-            <p className="interact-help" style={{ marginTop: 4, marginBottom: 0 }}>
-              Bridge, send, swap, and spend real USDC flows from the connected wallet.
+    <div className="gateway-redesigned-suite">
+      {/* 1. Hero Gateway Banner */}
+      <div className="gateway-hero-card">
+        <div className="hero-top-row">
+          <div className="hero-title-group">
+            <div className="gateway-badge">
+              <span className="pulse-dot-green" /> Circle Gateway Protocol
+            </div>
+            <h2>Gateway Multichain Suite</h2>
+            <p className="hero-sub font-medium">
+              Unified Liquidity, CCTP Cross-Chain Bridging, Token Swaps & Direct Transfers
             </p>
           </div>
-          <span className={`pill ${KIT_KEY ? "pill-ok" : "pill-warn"}`}>
-            {KIT_KEY ? "Kit key ready" : "Swap key missing"}
-          </span>
-        </div>
 
-        <div className="appkit-status-grid">
-          <div className="appkit-status">
-            <span>Wallet</span>
-            <strong>{address ? short(address) : "Not connected"}</strong>
-            <small>{isConnected ? "Browser wallet adapter" : "Connect wallet first"}</small>
-          </div>
-          <div className="appkit-status">
-            <span>Arc gas</span>
-            <strong>Native USDC</strong>
-            <small>RPC methods still use EVM names like eth_sendTransaction</small>
-          </div>
-          <div className="appkit-status">
-            <span>Network</span>
-            <strong>{arcTestnet.name}</strong>
-            <small>{arcTestnet.id} · Testnet only</small>
+          <div className="gateway-status-chips">
+            <div className="status-chip">
+              <span className="chip-label">Wallet</span>
+              <span className="chip-val">{address ? short(address) : "Disconnected"}</span>
+            </div>
+            <div className="status-chip">
+              <span className="chip-label">Network</span>
+              <span className="chip-val green">Arc L2 Testnet</span>
+            </div>
+            <div className="status-chip">
+              <span className="chip-label">Circle Kit</span>
+              <span className={`chip-val ${KIT_KEY ? "green" : "orange"}`}>
+                {KIT_KEY ? "✓ Configured" : "Bridge Active"}
+              </span>
+            </div>
           </div>
         </div>
 
         {onWrongChain && (
-          <button className="btn btn-primary form-btn" onClick={() => switchChain({ chainId: arcTestnet.id })} disabled={isSwitching}>
-            {isSwitching ? "Switching..." : "Switch to Arc Testnet"}
-          </button>
+          <div className="chain-switch-warning">
+            <span>⚠️ You are connected to chain #{chainId}. Switch to Arc Testnet to use Gateway features.</span>
+            <button
+              className="switch-btn"
+              onClick={() => switchChain({ chainId: arcTestnet.id })}
+              disabled={isSwitching}
+            >
+              {isSwitching ? "Switching..." : "Switch to Arc Testnet"}
+            </button>
+          </div>
         )}
       </div>
 
-      <div className="appkit-action-grid appkit-action-forms">
-        <section className="schedule-card appkit-action-card">
-          <div className="schedule-header">
-            <h3>Send</h3>
-            <span className="schedule-balance">Same chain</span>
+      {/* 2. Sub-Hub Segmented Control Navigation */}
+      <div className="gateway-nav-segmented">
+        <button
+          onClick={() => setActiveTab("bridge")}
+          className={`seg-tab-btn ${activeTab === "bridge" ? "active" : ""}`}
+        >
+          <span className="tab-icon">🌉</span>
+          <div className="tab-text">
+            <span className="tab-title">CCTP Bridge</span>
+            <span className="tab-sub">Cross-Chain USDC</span>
           </div>
-          <label className="form-row">
-            <input value={sendTo} onChange={(event) => setSendTo(event.target.value)} placeholder="Recipient 0x..." />
-          </label>
-          <div className="field-row two">
-            <label className="form-row">
-              <input value={sendAmount} onChange={(event) => setSendAmount(event.target.value)} placeholder="1.00" />
-              <span className="suffix">{sendToken}</span>
-            </label>
-            <label className="form-row">
-              <select value={sendToken} onChange={(event) => setSendToken(event.target.value)}>
-                {SWAP_TOKENS.map((token) => (
-                  <option value={token} key={token}>{token}</option>
-                ))}
-                <option value="NATIVE">Native USDC gas</option>
-              </select>
-            </label>
-          </div>
-          <div className="field-row two">
-            <button
-              className="btn btn-ghost form-btn"
-              disabled={disabled || !sendTo}
-              onClick={() => runAction("estimateSend", "Estimate send", async () => (await getAppKit()).estimateSend(await sendParams()), (result: EstimatedGas) => setEstimate(summarize(result)))}
-            >
-              {busy === "estimateSend" ? "Estimating..." : "Estimate"}
-            </button>
-            <button
-              className="btn btn-primary form-btn"
-              disabled={disabled || !sendTo}
-              onClick={() => runAction("send", "Send", async () => (await getAppKit()).send(await sendParams()))}
-            >
-              {busy === "send" ? "Sending..." : "Send"}
-            </button>
-          </div>
-        </section>
+        </button>
 
-        <section className="schedule-card appkit-action-card">
-          <div className="schedule-header">
-            <h3>Bridge</h3>
-            <span className="schedule-balance">CCTP</span>
+        <button
+          onClick={() => setActiveTab("gateway")}
+          className={`seg-tab-btn ${activeTab === "gateway" ? "active" : ""}`}
+        >
+          <span className="tab-icon">🌐</span>
+          <div className="tab-text">
+            <span className="tab-title">Unified Gateway</span>
+            <span className="tab-sub">Multichain Allocations</span>
           </div>
-          <div className="field-row two">
-            <label className="form-row">
-              <select value={bridgeSource} onChange={(event) => setBridgeSource(event.target.value as BridgeTestnetChain)}>
-                {BRIDGE_TESTNET_CHAINS.map((chain) => (
-                  <option value={chain.value} key={chain.value}>{chain.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="form-row">
-              <select value={bridgeDest} onChange={(event) => setBridgeDest(event.target.value as BridgeTestnetChain)}>
-                {BRIDGE_TESTNET_CHAINS.map((chain) => (
-                  <option value={chain.value} key={chain.value}>{chain.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label className="form-row">
-            <input value={bridgeRecipient} onChange={(event) => setBridgeRecipient(event.target.value)} placeholder="Recipient, defaults to connected wallet" />
-          </label>
-          <label className="form-row">
-            <input value={bridgeAmount} onChange={(event) => setBridgeAmount(event.target.value)} placeholder="1.00" />
-            <span className="suffix">USDC</span>
-          </label>
-          <div className="field-row two">
-            <button
-              className="btn btn-ghost form-btn"
-              disabled={disabled || bridgeSource === bridgeDest}
-              onClick={() => runAction("estimateBridge", "Estimate bridge", async () => (await getAppKit()).estimateBridge(await bridgeParams()), (result: EstimateResult) => setEstimate(summarize(result)))}
-            >
-              {busy === "estimateBridge" ? "Estimating..." : "Estimate"}
-            </button>
-            <button
-              className="btn btn-primary form-btn"
-              disabled={disabled || bridgeSource === bridgeDest}
-              onClick={() => runAction("bridge", "Bridge", async () => (await getAppKit()).bridge(await bridgeParams()))}
-            >
-              {busy === "bridge" ? "Bridging..." : "Bridge"}
-            </button>
-          </div>
-        </section>
+        </button>
 
-        <section className="schedule-card appkit-action-card">
-          <div className="schedule-header">
-            <h3>Swap</h3>
-            <span className="schedule-balance">Arc only</span>
+        <button
+          onClick={() => setActiveTab("swap")}
+          className={`seg-tab-btn ${activeTab === "swap" ? "active" : ""}`}
+        >
+          <span className="tab-icon">💱</span>
+          <div className="tab-text">
+            <span className="tab-title">Multi-Swap</span>
+            <span className="tab-sub">USDC / EURC / cirBTC</span>
           </div>
-          <div className="field-row two">
-            <label className="form-row">
-              <select value={swapIn} onChange={(event) => setSwapIn(event.target.value as (typeof SWAP_TOKENS)[number])}>
-                {SWAP_TOKENS.map((token) => (
-                  <option value={token} key={token}>{token}</option>
-                ))}
-              </select>
-            </label>
-            <label className="form-row">
-              <select value={swapOut} onChange={(event) => setSwapOut(event.target.value as (typeof SWAP_TOKENS)[number])}>
-                {SWAP_TOKENS.map((token) => (
-                  <option value={token} key={token}>{token}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="field-row two">
-            <label className="form-row">
-              <input value={swapAmount} onChange={(event) => setSwapAmount(event.target.value)} placeholder="1.00" />
-              <span className="suffix">{swapIn}</span>
-            </label>
-            <label className="form-row">
-              <input value={slippage} onChange={(event) => setSlippage(event.target.value)} placeholder="300" />
-              <span className="suffix">BPS</span>
-            </label>
-          </div>
-          <div className="field-row two">
-            <button
-              className="btn btn-ghost form-btn"
-              disabled={disabled || !KIT_KEY || swapIn === swapOut}
-              onClick={() => runAction("estimateSwap", "Estimate swap", async () => (await getAppKit()).estimateSwap(await swapParams()), (result: SwapEstimate) => setEstimate(summarize(result)))}
-            >
-              {busy === "estimateSwap" ? "Estimating..." : "Estimate"}
-            </button>
-            <button
-              className="btn btn-primary form-btn"
-              disabled={disabled || !KIT_KEY || swapIn === swapOut}
-              onClick={() => runAction("swap", "Swap", async () => (await getAppKit()).swap(await swapParams()))}
-            >
-              {busy === "swap" ? "Swapping..." : "Swap"}
-            </button>
-          </div>
-          {!KIT_KEY && <small className="appkit-note">Set VITE_CIRCLE_KIT_KEY for Arc swap quotes and execution.</small>}
-        </section>
+        </button>
 
-        <section className="schedule-card appkit-action-card">
-          <div className="schedule-header">
-            <h3>Unified Balance</h3>
-            <span className="schedule-balance">Gateway</span>
+        <button
+          onClick={() => setActiveTab("send")}
+          className={`seg-tab-btn ${activeTab === "send" ? "active" : ""}`}
+        >
+          <span className="tab-icon">💸</span>
+          <div className="tab-text">
+            <span className="tab-title">Direct Send</span>
+            <span className="tab-sub">Instant Transfers</span>
           </div>
-          <div className="field-row two">
-            <button
-              className="btn btn-ghost form-btn"
-              disabled={disabled}
-              onClick={() =>
-                runAction("balances", "Unified balance", async () => (await getAppKit()).unifiedBalance.getBalances({ token: "USDC", networkType: "testnet", sources: { address: address ?? "" }, includePending: true }), setBalances)
-              }
-            >
-              {busy === "balances" ? "Checking..." : "Check Balance"}
-            </button>
-            <button
-              className="btn btn-primary form-btn"
-              disabled={disabled}
-              onClick={() =>
-                runAction("deposit", "Unified deposit", async () =>
-                  (await getAppKit()).unifiedBalance.deposit({
-                    from: { adapter: await getAdapter(), chain: ubSource },
-                    amount: ubAmount,
-                    token: "USDC",
-                    allowanceStrategy: "approve",
-                  })
-                )
-              }
-            >
-              {busy === "deposit" ? "Depositing..." : "Deposit"}
-            </button>
-          </div>
-          <div className="field-row two">
-            <label className="form-row">
-              <select value={ubSource} onChange={(event) => setUbSource(event.target.value as UnifiedTestnetChain)}>
-                {UNIFIED_TESTNET_CHAINS.map((chain) => (
-                  <option value={chain.value} key={chain.value}>{chain.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="form-row">
-              <select value={ubDest} onChange={(event) => setUbDest(event.target.value as UnifiedTestnetChain)}>
-                {UNIFIED_TESTNET_CHAINS.map((chain) => (
-                  <option value={chain.value} key={chain.value}>{chain.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label className="form-row">
-            <input value={ubRecipient} onChange={(event) => setUbRecipient(event.target.value)} placeholder="Spend recipient, defaults to connected wallet" />
-          </label>
-          <label className="form-row">
-            <input value={ubAmount} onChange={(event) => setUbAmount(event.target.value)} placeholder="1.00" />
-            <span className="suffix">USDC</span>
-          </label>
-          <div className="field-row two">
-            <button
-              className="btn btn-ghost form-btn"
-              disabled={disabled}
-              onClick={() => runAction("estimateSpend", "Estimate spend", async () => (await getAppKit()).unifiedBalance.estimateSpend(await spendParams()), (result: EstimateSpendResult) => setEstimate(summarize(result)))}
-            >
-              {busy === "estimateSpend" ? "Estimating..." : "Estimate Spend"}
-            </button>
-            <button
-              className="btn btn-primary form-btn"
-              disabled={disabled}
-              onClick={() => runAction("spend", "Unified spend", async () => (await getAppKit()).unifiedBalance.spend(await spendParams()), (result: SpendResult) => setEstimate(summarize(result)))}
-            >
-              {busy === "spend" ? "Spending..." : "Spend"}
-            </button>
-          </div>
-        </section>
+        </button>
       </div>
 
+      {/* 3. Sub-Hub Form Panel */}
+      <div className="gateway-hub-viewport">
+        {/* SUB-HUB 1: CCTP BRIDGE */}
+        {activeTab === "bridge" && (
+          <div className="hub-card-body">
+            <div className="hub-header-row">
+              <div>
+                <h3>🌉 Native CCTP Cross-Chain Bridge</h3>
+                <p className="hub-desc">Move native USDC between Arc Testnet and EVM testnets with zero slippage</p>
+              </div>
+              <span className="cctp-chip">Native CCTP Protocol</span>
+            </div>
+
+            <div className="chain-selector-grid">
+              <div className="chain-select-box">
+                <span className="box-label">From Source Chain</span>
+                <select
+                  value={bridgeSource}
+                  onChange={(e) => setBridgeSource(e.target.value as BridgeTestnetChain)}
+                  className="chain-select-input"
+                >
+                  {BRIDGE_TESTNET_CHAINS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.icon} {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bridge-arrow-node">➡️</div>
+
+              <div className="chain-select-box">
+                <span className="box-label">To Destination Chain</span>
+                <select
+                  value={bridgeDest}
+                  onChange={(e) => setBridgeDest(e.target.value as BridgeTestnetChain)}
+                  className="chain-select-input"
+                >
+                  {BRIDGE_TESTNET_CHAINS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.icon} {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="field-group">
+              <label className="input-label">Recipient Address</label>
+              <input
+                type="text"
+                placeholder="0x... (Defaults to connected wallet)"
+                value={bridgeRecipient}
+                onChange={(e) => setBridgeRecipient(e.target.value)}
+                className="gateway-text-input font-mono"
+              />
+            </div>
+
+            <div className="field-group">
+              <label className="input-label">Bridge Amount</label>
+              <div className="input-amount-wrapper">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="25.00"
+                  value={bridgeAmount}
+                  onChange={(e) => setBridgeAmount(e.target.value)}
+                  className="gateway-amount-input"
+                />
+                <span className="denom-tag">USDC</span>
+              </div>
+            </div>
+
+            <div className="hub-actions-row">
+              <button
+                className="hub-btn secondary"
+                disabled={disabled || bridgeSource === bridgeDest}
+                onClick={() =>
+                  runAction(
+                    "estimateBridge",
+                    "Estimate CCTP Bridge",
+                    async () => (await getAppKit()).estimateBridge(await bridgeParams()),
+                    (result: EstimateResult) => setEstimate(summarize(result))
+                  )
+                }
+              >
+                {busy === "estimateBridge" ? "Estimating Fees..." : "Estimate Fees"}
+              </button>
+
+              <button
+                className="hub-btn primary"
+                disabled={disabled || bridgeSource === bridgeDest}
+                onClick={() => runAction("bridge", "CCTP Bridge", async () => (await getAppKit()).bridge(await bridgeParams()))}
+              >
+                {busy === "bridge" ? "Bridging USDC..." : "Bridge USDC"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SUB-HUB 2: UNIFIED GATEWAY */}
+        {activeTab === "gateway" && (
+          <div className="hub-card-body">
+            <div className="hub-header-row">
+              <div>
+                <h3>🌐 Unified Multichain Gateway</h3>
+                <p className="hub-desc">Aggregate and spend USDC liquidity across all connected chains from one wallet</p>
+              </div>
+              <span className="cctp-chip">Circle Gateway</span>
+            </div>
+
+            <div className="gateway-balance-actions">
+              <button
+                className="hub-btn secondary"
+                disabled={disabled}
+                onClick={() =>
+                  runAction(
+                    "balances",
+                    "Check Multichain Balances",
+                    async () =>
+                      (await getAppKit()).unifiedBalance.getBalances({
+                        token: "USDC",
+                        networkType: "testnet",
+                        sources: { address: address ?? "" },
+                        includePending: true,
+                      }),
+                    setBalances
+                  )
+                }
+              >
+                {busy === "balances" ? "Querying Balances..." : "🔍 Check Multichain Balances"}
+              </button>
+
+              <button
+                className="hub-btn primary"
+                disabled={disabled}
+                onClick={() =>
+                  runAction("deposit", "Unified Gateway Deposit", async () =>
+                    (await getAppKit()).unifiedBalance.deposit({
+                      from: { adapter: await getAdapter(), chain: ubSource },
+                      amount: ubAmount,
+                      token: "USDC",
+                      allowanceStrategy: "approve",
+                    })
+                  )
+                }
+              >
+                {busy === "deposit" ? "Depositing..." : "Deposit to Gateway"}
+              </button>
+            </div>
+
+            <div className="chain-selector-grid">
+              <div className="chain-select-box">
+                <span className="box-label">Source Liquidity Chain</span>
+                <select
+                  value={ubSource}
+                  onChange={(e) => setUbSource(e.target.value as UnifiedTestnetChain)}
+                  className="chain-select-input"
+                >
+                  {UNIFIED_TESTNET_CHAINS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.icon} {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bridge-arrow-node">➡️</div>
+
+              <div className="chain-select-box">
+                <span className="box-label">Destination Payout Chain</span>
+                <select
+                  value={ubDest}
+                  onChange={(e) => setUbDest(e.target.value as UnifiedTestnetChain)}
+                  className="chain-select-input"
+                >
+                  {UNIFIED_TESTNET_CHAINS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.icon} {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="field-group">
+              <label className="input-label">Recipient Address</label>
+              <input
+                type="text"
+                placeholder="0x... (Defaults to connected wallet)"
+                value={ubRecipient}
+                onChange={(e) => setUbRecipient(e.target.value)}
+                className="gateway-text-input font-mono"
+              />
+            </div>
+
+            <div className="field-group">
+              <label className="input-label">Spend Amount</label>
+              <div className="input-amount-wrapper">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="10.00"
+                  value={ubAmount}
+                  onChange={(e) => setUbAmount(e.target.value)}
+                  className="gateway-amount-input"
+                />
+                <span className="denom-tag">USDC</span>
+              </div>
+            </div>
+
+            <div className="hub-actions-row">
+              <button
+                className="hub-btn secondary"
+                disabled={disabled}
+                onClick={() =>
+                  runAction(
+                    "estimateSpend",
+                    "Estimate Spend",
+                    async () => (await getAppKit()).unifiedBalance.estimateSpend(await spendParams()),
+                    (result: EstimateSpendResult) => setEstimate(summarize(result))
+                  )
+                }
+              >
+                {busy === "estimateSpend" ? "Estimating..." : "Estimate Spend"}
+              </button>
+
+              <button
+                className="hub-btn primary"
+                disabled={disabled}
+                onClick={() =>
+                  runAction(
+                    "spend",
+                    "Unified Spend",
+                    async () => (await getAppKit()).unifiedBalance.spend(await spendParams()),
+                    (result: SpendResult) => setEstimate(summarize(result))
+                  )
+                }
+              >
+                {busy === "spend" ? "Executing Spend..." : "Spend USDC"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SUB-HUB 3: MULTI-CURRENCY SWAP */}
+        {activeTab === "swap" && (
+          <div className="hub-card-body">
+            <div className="hub-header-row">
+              <div>
+                <h3>💱 Multi-Currency Token Swaps</h3>
+                <p className="hub-desc">Swap USDC, EURC, and cirBTC natively on Arc Testnet</p>
+              </div>
+              <span className="cctp-chip">Arc DEX Swaps</span>
+            </div>
+
+            <div className="field-row two">
+              <div className="chain-select-box">
+                <span className="box-label">Pay Token</span>
+                <select
+                  value={swapIn}
+                  onChange={(e) => setSwapIn(e.target.value as (typeof SWAP_TOKENS)[number])}
+                  className="chain-select-input"
+                >
+                  {SWAP_TOKENS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="chain-select-box">
+                <span className="box-label">Receive Token</span>
+                <select
+                  value={swapOut}
+                  onChange={(e) => setSwapOut(e.target.value as (typeof SWAP_TOKENS)[number])}
+                  className="chain-select-input"
+                >
+                  {SWAP_TOKENS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="field-row two">
+              <div className="field-group">
+                <label className="input-label">Swap Amount</label>
+                <div className="input-amount-wrapper">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="50.00"
+                    value={swapAmount}
+                    onChange={(e) => setSwapAmount(e.target.value)}
+                    className="gateway-amount-input"
+                  />
+                  <span className="denom-tag">{swapIn}</span>
+                </div>
+              </div>
+
+              <div className="field-group">
+                <label className="input-label">Slippage Tolerance</label>
+                <div className="input-amount-wrapper">
+                  <input
+                    type="text"
+                    placeholder="300"
+                    value={slippage}
+                    onChange={(e) => setSlippage(e.target.value)}
+                    className="gateway-amount-input"
+                  />
+                  <span className="denom-tag">BPS</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="hub-actions-row">
+              <button
+                className="hub-btn secondary"
+                disabled={disabled || !KIT_KEY || swapIn === swapOut}
+                onClick={() =>
+                  runAction(
+                    "estimateSwap",
+                    "Estimate Swap",
+                    async () => (await getAppKit()).estimateSwap(await swapParams()),
+                    (result: SwapEstimate) => setEstimate(summarize(result))
+                  )
+                }
+              >
+                {busy === "estimateSwap" ? "Quoting..." : "Get Quote"}
+              </button>
+
+              <button
+                className="hub-btn primary"
+                disabled={disabled || !KIT_KEY || swapIn === swapOut}
+                onClick={() => runAction("swap", "Execute Swap", async () => (await getAppKit()).swap(await swapParams()))}
+              >
+                {busy === "swap" ? "Swapping..." : "Swap Tokens"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SUB-HUB 4: DIRECT SEND */}
+        {activeTab === "send" && (
+          <div className="hub-card-body">
+            <div className="hub-header-row">
+              <div>
+                <h3>💸 Direct Token Transfer</h3>
+                <p className="hub-desc">Execute same-chain instant token transfers on Arc Testnet</p>
+              </div>
+              <span className="cctp-chip">Arc Direct Transfer</span>
+            </div>
+
+            <div className="field-group">
+              <label className="input-label">Recipient 0x Address</label>
+              <input
+                type="text"
+                placeholder="0x..."
+                value={sendTo}
+                onChange={(e) => setSendTo(e.target.value)}
+                className="gateway-text-input font-mono"
+              />
+            </div>
+
+            <div className="field-row two">
+              <div className="field-group">
+                <label className="input-label">Transfer Amount</label>
+                <div className="input-amount-wrapper">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="10.00"
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(e.target.value)}
+                    className="gateway-amount-input"
+                  />
+                  <span className="denom-tag">{sendToken}</span>
+                </div>
+              </div>
+
+              <div className="field-group">
+                <label className="input-label">Token Asset</label>
+                <select
+                  value={sendToken}
+                  onChange={(e) => setSendToken(e.target.value)}
+                  className="chain-select-input"
+                >
+                  {SWAP_TOKENS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                  <option value="NATIVE">Native USDC Gas</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="hub-actions-row">
+              <button
+                className="hub-btn secondary"
+                disabled={disabled || !sendTo}
+                onClick={() =>
+                  runAction(
+                    "estimateSend",
+                    "Estimate Send",
+                    async () => (await getAppKit()).estimateSend(await sendParams()),
+                    (result: EstimatedGas) => setEstimate(summarize(result))
+                  )
+                }
+              >
+                {busy === "estimateSend" ? "Estimating..." : "Estimate Gas"}
+              </button>
+
+              <button
+                className="hub-btn primary"
+                disabled={disabled || !sendTo}
+                onClick={() => runAction("send", "Send Tokens", async () => (await getAppKit()).send(await sendParams()))}
+              >
+                {busy === "send" ? "Sending..." : "Send Tokens"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Activity & Operations Output Feed */}
       {(balances || estimate || logs.length > 0) && (
-        <section className="schedule-card appkit-results">
-          <div className="schedule-header">
-            <h3>Activity</h3>
-            <button className="btn btn-ghost btn-small" onClick={() => { setLogs([]); setBalances(null); setEstimate(null); }}>
-              Clear
+        <div className="gateway-activity-card">
+          <div className="activity-card-header">
+            <h3>Gateway Operation Receipts</h3>
+            <button
+              className="clear-logs-btn"
+              onClick={() => {
+                setLogs([]);
+                setBalances(null);
+                setEstimate(null);
+              }}
+            >
+              Clear Feed
             </button>
           </div>
 
           {balances && (
-            <div className="appkit-result-box">
-              <strong>Unified Balance</strong>
-              <pre>{summarize(balances)}</pre>
+            <div className="gateway-result-block">
+              <span className="result-label">Unified Multichain Balances</span>
+              <pre className="result-code">{summarize(balances)}</pre>
             </div>
           )}
 
           {estimate && (
-            <div className="appkit-result-box">
-              <strong>Latest estimate / result</strong>
-              <pre>{estimate}</pre>
+            <div className="gateway-result-block">
+              <span className="result-label">Fee & Route Estimate</span>
+              <pre className="result-code">{estimate}</pre>
             </div>
           )}
 
-          <div className="appkit-log-list">
+          <div className="gateway-log-feed">
             {logs.map((log) => (
-              <div className={`appkit-log ${log.status}`} key={log.id}>
-                <div>
+              <div key={log.id} className={`gateway-log-row ${log.status}`}>
+                <div className="log-info">
+                  <span className={`log-badge ${log.status}`}>{log.status}</span>
                   <strong>{log.action}</strong>
-                  <pre>{log.detail}</pre>
+                  <pre className="log-detail-pre">{log.detail}</pre>
                 </div>
                 {log.href && (
-                  <a className="tx-link appkit-tx-link" href={log.href} target="_blank" rel="noreferrer">
-                    View tx
+                  <a href={log.href} target="_blank" rel="noreferrer" className="log-tx-link">
+                    View on ArcScan ↗
                   </a>
                 )}
               </div>
             ))}
           </div>
-        </section>
+        </div>
       )}
     </div>
   );

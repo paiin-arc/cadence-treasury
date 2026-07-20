@@ -17,7 +17,7 @@ const TAB_TITLES: Record<TabId, { title: string; breadcrumb: string }> = {
   bills: { title: "Accounts & Bills", breadcrumb: "Financials / Bills" },
   escrow: { title: "Escrow Vaults", breadcrumb: "Contracts / Escrow" },
   multipay: { title: "Multi-Pay Batch", breadcrumb: "Payments / Multi-Pay" },
-  appkit: { title: "App Kit Developer Suite", breadcrumb: "Tools / App Kit" },
+  appkit: { title: "Gateway Multichain Suite", breadcrumb: "Cross-Chain / Gateway" },
   docs: { title: "Documentation & Specs", breadcrumb: "Resources / Docs" },
   cli: { title: "CLI Guide & Scripts", breadcrumb: "Developer / CLI" },
 };
