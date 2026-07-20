@@ -6,8 +6,12 @@ import {
   useWriteContract,
 } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
-import { arcTestnet, publicClient, TREASURY_ADDRESS } from "../lib/arc";
+import { decodeEventLog } from "viem";
+import { arcTestnet, TREASURY_ADDRESS } from "../lib/arc";
 import { TREASURY_ABI } from "../lib/abi";
+import { safeFees } from "../lib/gas";
+import { recordScheduledPayments } from "../lib/paymentJournal";
+import { waitForConfirmation } from "../lib/tx";
 
 const FREQUENCY_OPTIONS = [
   { label: "One-off", seconds: 0 },
@@ -36,14 +40,14 @@ export default function SchedulePanel() {
   const [freqSeconds, setFreqSeconds] = useState(0);
   const [delayMinutes, setDelayMinutes] = useState("1");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string; txHash?: string } | null>(null);
 
   const userBalance = useReadContract({
     address: TREASURY_ADDRESS,
     abi: TREASURY_ABI,
     functionName: "userBalances",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && onArc, refetchInterval: 8_000 },
+    query: { enabled: !!address && onArc, refetchInterval: 30_000 },
   });
 
   const maxTx = useReadContract({
@@ -103,27 +107,77 @@ export default function SchedulePanel() {
           BigInt(freqSeconds),
           BigInt(delay * 60),
         ],
+        ...(await safeFees()),
       });
-      setMsg({ kind: "ok", text: `Payment sent (${hash.slice(0, 10)}…), waiting…` });
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash,
-        timeout: 60_000,
-        pollingInterval: 1_500,
+      setMsg({
+        kind: "ok",
+        text: `Payment sent (${hash.slice(0, 10)}…), waiting…`,
+        txHash: hash,
       });
-      if (receipt.status !== "success") {
-        throw new Error(`Schedule reverted (${hash.slice(0, 10)}…)`);
+      const receipt = await waitForConfirmation(hash, "Schedule");
+      if (!receipt) {
+        setMsg({
+          kind: "ok",
+          text: "Payment submitted. Arc RPC could not confirm it yet, but the tx may already be mined. Check ArcScan and the list will refresh automatically.",
+          txHash: hash,
+        });
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: ["payments"] }),
+          queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+          queryClient.invalidateQueries({ queryKey: ["treasuryStats"] }),
+        ]);
+        return;
       }
+
+      let paymentId: string | undefined;
+      for (const log of receipt.logs) {
+        try {
+          const decoded = decodeEventLog({
+            abi: TREASURY_ABI,
+            data: log.data,
+            topics: log.topics,
+          });
+          if (decoded.eventName === "PaymentScheduled") {
+            paymentId = (decoded.args as { paymentId: bigint }).paymentId.toString();
+            break;
+          }
+        } catch {
+          /* not a treasury event */
+        }
+      }
+
+      if (paymentId && address) {
+        recordScheduledPayments(address, [
+          {
+            id: paymentId,
+            owner: address.toLowerCase(),
+            recipient: normalizedRecipient,
+            amountRaw: amountRaw.toString(),
+            frequency: freqSeconds,
+            delaySeconds: delay * 60,
+            txHash: hash,
+            scheduledAt: Date.now(),
+            source: "schedule",
+          },
+        ]);
+      }
+
       const willTriggerApproval =
         approvalThreshold !== undefined && amountRaw >= approvalThreshold;
       setMsg({
         kind: "ok",
         text: willTriggerApproval
-          ? `Scheduled — but flagged for human review (≥ half of maxSingleTx). Tx: ${hash.slice(0, 12)}…`
-          : `Scheduled — the bot will execute on time. Tx: ${hash.slice(0, 12)}…`,
+          ? `Scheduled${paymentId ? ` as #${paymentId}` : ""} — flagged for human review.`
+          : `Scheduled${paymentId ? ` as #${paymentId}` : ""} — the bot will execute on time.`,
+        txHash: hash,
       });
       setRecipient("");
       setAmount("");
-      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+        queryClient.invalidateQueries({ queryKey: ["treasuryStats"] }),
+      ]);
     } catch (e: unknown) {
       const err = e as { shortMessage?: string; message?: string };
       setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Transaction failed" });
@@ -225,7 +279,19 @@ export default function SchedulePanel() {
 
         {msg && (
           <div className={`interact-msg ${msg.kind}`}>
-            {msg.text}
+            <div>{msg.text}</div>
+            {msg.txHash && (
+              <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 12 }}>
+                <span style={{ opacity: 0.7 }}>tx:</span>{" "}
+                <a
+                  href={`https://testnet.arcscan.app/tx/${msg.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {msg.txHash.slice(0, 10)}…{msg.txHash.slice(-6)} ↗
+                </a>
+              </div>
+            )}
           </div>
         )}
       </div>

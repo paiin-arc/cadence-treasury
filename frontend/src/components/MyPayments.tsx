@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAccount, useChainId, useWriteContract } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
-import { arcTestnet, publicClient, TREASURY_ADDRESS } from "../lib/arc";
+import { arcTestnet, TREASURY_ADDRESS } from "../lib/arc";
 import { TREASURY_ABI } from "../lib/abi";
 import { usePayments } from "../hooks/useTreasury";
+import { safeFees } from "../lib/gas";
+import { waitForConfirmation } from "../lib/tx";
+import {
+  loadPaymentJournal,
+  PAYMENT_JOURNAL_EVENT,
+  type PaymentJournalItem,
+} from "../lib/paymentJournal";
 
 function formatUSDC(amountRaw: bigint) {
   return (Number(amountRaw) / 1e6).toLocaleString(undefined, {
@@ -25,6 +32,15 @@ function formatFrequency(seconds: number) {
   return `Every ${Math.round(seconds / 86400)}d`;
 }
 
+function formatDateTime(timestampMs: number) {
+  return new Date(timestampMs).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function MyPayments() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -36,12 +52,45 @@ export default function MyPayments() {
 
   const [cancelling, setCancelling] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [journal, setJournal] = useState<PaymentJournalItem[]>(() =>
+    loadPaymentJournal(address)
+  );
+
+  useEffect(() => {
+    const syncJournal = () => setJournal(loadPaymentJournal(address));
+    syncJournal();
+    window.addEventListener(PAYMENT_JOURNAL_EVENT, syncJournal);
+    window.addEventListener("storage", syncJournal);
+    return () => {
+      window.removeEventListener(PAYMENT_JOURNAL_EVENT, syncJournal);
+      window.removeEventListener("storage", syncJournal);
+    };
+  }, [address]);
+
+  const mine = useMemo(() => {
+    const mineOnChain = (payments ?? []).filter(
+      (p) => address && (p.owner as string).toLowerCase() === address.toLowerCase()
+    );
+    const chainIds = new Set(mineOnChain.map((p) => p.id.toString()));
+    const journalOnly = journal.filter((item) => !chainIds.has(item.id));
+
+    return [
+      ...mineOnChain.map((payment) => {
+        const journalItem = journal.find((item) => item.id === payment.id.toString());
+        return { kind: "chain" as const, payment, journalItem };
+      }),
+      ...journalOnly.map((journalItem) => ({
+        kind: "journal" as const,
+        journalItem,
+      })),
+    ].sort((a, b) => {
+      const aId = a.kind === "chain" ? a.payment.id : Number(a.journalItem.id);
+      const bId = b.kind === "chain" ? b.payment.id : Number(b.journalItem.id);
+      return bId - aId;
+    });
+  }, [address, journal, payments]);
 
   if (!isConnected || !onArc) return null;
-
-  const mine = (payments ?? []).filter(
-    (p) => address && (p.owner as string).toLowerCase() === address.toLowerCase()
-  );
 
   const handleCancel = async (id: number) => {
     setMsg(null);
@@ -53,18 +102,26 @@ export default function MyPayments() {
         abi: TREASURY_ABI,
         functionName: "cancelPayment",
         args: [BigInt(id)],
+        ...(await safeFees()),
       });
       setMsg({ kind: "ok", text: `Cancel sent (${hash.slice(0, 10)}…), waiting…` });
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash,
-        timeout: 60_000,
-        pollingInterval: 1_500,
-      });
-      if (receipt.status !== "success") {
-        throw new Error("Cancel reverted");
+      const receipt = await waitForConfirmation(hash, "Cancel");
+      if (!receipt) {
+        setMsg({
+          kind: "ok",
+          text: `Cancel submitted (${hash.slice(0, 10)}…). Arc RPC could not confirm it yet; the list will refresh automatically.`,
+        });
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: ["payments"] }),
+          queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+        ]);
+        return;
       }
       setMsg({ kind: "ok", text: `Payment #${id} cancelled.` });
-      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+      ]);
     } catch (e: unknown) {
       const err = e as { shortMessage?: string; message?: string };
       setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Cancel failed" });
@@ -98,56 +155,116 @@ export default function MyPayments() {
                 <th style={{ textAlign: "right" }}>Amount</th>
                 <th>Frequency</th>
                 <th>Status</th>
+                <th>Tx</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {mine.map((p) => (
-                <tr key={p.id}>
-                  <td>#{p.id}</td>
-                  <td>
-                    <a
-                      href={`https://testnet.arcscan.app/address/${p.recipient}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {shortAddr(p.recipient as string)}
-                    </a>
-                  </td>
-                  <td style={{ textAlign: "right" }}>{formatUSDC(p.amount as bigint)} USDC</td>
-                  <td>{formatFrequency(Number(p.frequency))}</td>
-                  <td>
-                    {p.cancelled ? (
-                      <span className="pill pill-cancel">Cancelled</span>
-                    ) : !p.active && p.executedCount > 0 ? (
-                      <span className="pill pill-ok">Done</span>
-                    ) : !p.active ? (
-                      <span className="pill pill-fail">Failed</span>
-                    ) : p.requiresApproval ? (
-                      <span className="pill pill-warn">Needs approval</span>
-                    ) : p.isDue ? (
-                      <span className="pill pill-due">Due now</span>
-                    ) : p.executedCount > 0 ? (
-                      <span className="pill pill-ok">
-                        Active · {p.executedCount} paid
-                      </span>
-                    ) : (
-                      <span className="pill pill-scheduled">Scheduled</span>
-                    )}
-                  </td>
-                  <td>
-                    {p.active && (
-                      <button
-                        className="btn-cancel"
-                        onClick={() => handleCancel(p.id)}
-                        disabled={cancelling === p.id}
+              {mine.map((row) => {
+                if (row.kind === "journal") {
+                  const item = row.journalItem;
+                  return (
+                    <tr key={`journal-${item.id}-${item.txHash}`}>
+                      <td>#{item.id}</td>
+                      <td>
+                        <a
+                          href={`https://testnet.arcscan.app/address/${item.recipient}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {shortAddr(item.recipient)}
+                        </a>
+                      </td>
+                      <td style={{ textAlign: "right" }}>{formatUSDC(BigInt(item.amountRaw))} USDC</td>
+                      <td>{formatFrequency(item.frequency)}</td>
+                      <td>
+                        <span className="pill pill-scheduled">Indexing</span>
+                      </td>
+                      <td>
+                        <a
+                          className="tx-link"
+                          href={`https://testnet.arcscan.app/tx/${item.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={formatDateTime(item.scheduledAt)}
+                        >
+                          Verify ↗
+                        </a>
+                      </td>
+                      <td></td>
+                    </tr>
+                  );
+                }
+
+                const p = row.payment;
+                return (
+                  <tr key={p.id}>
+                    <td>#{p.id}</td>
+                    <td>
+                      <a
+                        href={`https://testnet.arcscan.app/address/${p.recipient}`}
+                        target="_blank"
+                        rel="noreferrer"
                       >
-                        {cancelling === p.id ? "Cancelling…" : "Cancel"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                        {shortAddr(p.recipient as string)}
+                      </a>
+                    </td>
+                    <td style={{ textAlign: "right" }}>{formatUSDC(p.amount as bigint)} USDC</td>
+                    <td>{formatFrequency(Number(p.frequency))}</td>
+                    <td>
+                      {(() => {
+                        const isOneOff = Number(p.frequency) === 0;
+                        if (!p.active) {
+                          if (p.cancelled || !isOneOff) {
+                            return <span className="pill pill-cancel">Cancelled</span>;
+                          }
+                          return <span className="pill pill-ok">Done</span>;
+                        }
+                        if (p.requiresApproval) {
+                          return <span className="pill pill-warn">Needs approval</span>;
+                        }
+                        if (p.isDue) {
+                          return <span className="pill pill-due">Due now</span>;
+                        }
+                        if (p.executedCount > 0) {
+                          return (
+                            <span className="pill pill-ok">
+                              Active · {p.executedCount} paid
+                            </span>
+                          );
+                        }
+                        return <span className="pill pill-scheduled">Scheduled</span>;
+                      })()}
+                    </td>
+                    <td>
+                      {row.journalItem?.txHash ? (
+                        <a
+                          className="tx-link"
+                          href={`https://testnet.arcscan.app/tx/${row.journalItem.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={formatDateTime(row.journalItem.scheduledAt)}
+                        >
+                          Verify ↗
+                        </a>
+                      ) : (
+                        <span className="tx-link" style={{ opacity: 0.55 }}>On-chain</span>
+                      )}
+                    </td>
+                    <td>
+                      {p.active && (
+                        <button
+                          className="btn-cancel"
+                          onClick={() => handleCancel(p.id)}
+                          disabled={cancelling === p.id}
+                        >
+                          {cancelling === p.id ? "Cancelling…" : "Cancel"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

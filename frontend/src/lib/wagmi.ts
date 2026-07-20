@@ -1,12 +1,21 @@
-import { http, createConfig } from "wagmi";
-import { injected } from "wagmi/connectors";
-import { arcTestnet } from "./arc";
+import { fallback, http, createConfig } from "wagmi";
+import { injected, metaMask } from "wagmi/connectors";
+import { arcTestnet, ARC_RPC_URLS } from "./arc";
 
 export const wagmiConfig = createConfig({
   chains: [arcTestnet],
-  connectors: [injected()],
+  connectors: [metaMask(), injected()],
   transports: {
-    [arcTestnet.id]: http(),
+    [arcTestnet.id]: fallback(
+      ARC_RPC_URLS.map((url) =>
+        http(url, {
+          retryCount: 5,
+          retryDelay: 2_000,
+          timeout: 20_000,
+        })
+      ),
+      { rank: false }
+    ),
   },
 });
 

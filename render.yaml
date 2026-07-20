@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: cadence-treasury-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: TREASURY_CONTRACT_ADDRESS
+        sync: false
+      - key: ESCROW_CONTRACT_ADDRESS
+        sync: false
+      - key: CIRCLE_API_KEY
+        sync: false
+      - key: CIRCLE_ENTITY_SECRET
+        sync: false
+      - key: DEPLOYER_WALLET_ID
+        sync: false

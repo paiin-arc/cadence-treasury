@@ -1,8 +1,8 @@
 import { useState, useMemo, type ReactElement } from "react";
-import { useTransactionsHistory, type TxHistoryItem } from "../hooks/useTreasury";
-import { TREASURY_ADDRESS } from "../lib/arc";
+import { useAccount } from "wagmi";
+import { useTransactionsHistory, useAnalytics } from "../hooks/useTreasury";
 
-type FilterType = "all" | TxHistoryItem["type"];
+type FilterType = "all" | "deposit" | "withdraw" | "schedule" | "execute" | "agent_exec" | "failed" | "agent";
 
 const FILTERS: { value: FilterType; label: string }[] = [
   { value: "all", label: "All" },
@@ -10,57 +10,81 @@ const FILTERS: { value: FilterType; label: string }[] = [
   { value: "withdraw", label: "Withdrawals" },
   { value: "schedule", label: "Scheduled" },
   { value: "execute", label: "Executed" },
-  { value: "cancel", label: "Cancelled" },
+  { value: "agent_exec", label: "⚡ Agent Executions" },
+  { value: "failed", label: "Failed" },
+  { value: "agent", label: "Agent Activity Logs" },
 ];
 
 const TYPE_META: Record<
-  TxHistoryItem["type"],
+  string,
   { label: string; color: string; icon: ReactElement }
 > = {
   deposit: {
     label: "Deposit",
-    color: "#34d399",
+    color: "#10B981", // Green
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 5v14M5 12l7 7 7-7" />
       </svg>
     ),
   },
   withdraw: {
     label: "Withdraw",
-    color: "#fbbf24",
+    color: "#F59E0B", // Amber
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 19V5M5 12l7-7 7 7" />
       </svg>
     ),
   },
   schedule: {
     label: "Scheduled",
-    color: "#67e8f9",
+    color: "#6366F1", // Indigo
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="9" />
         <path d="M12 7v5l3 2" />
       </svg>
     ),
   },
   execute: {
-    label: "Executed",
-    color: "#a78bfa",
+    label: "Agent Execution",
+    color: "#3B82F6", // Blue
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="20 6 9 17 4 12" />
       </svg>
     ),
   },
   cancel: {
     label: "Cancelled",
-    color: "#f87171",
+    color: "#EF4444",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="9" />
-        <path d="M9 9l6 6M15 9l-6 6" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+      </svg>
+    ),
+  },
+  failed: {
+    label: "Failed",
+    color: "#EF4444",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+      </svg>
+    ),
+  },
+  agent: {
+    label: "Agent Log",
+    color: "#F97316", // Warm Orange
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="11" width="18" height="10" rx="2" />
+        <circle cx="12" cy="5" r="2" />
+        <path d="M12 7v4" />
       </svg>
     ),
   },
@@ -75,135 +99,263 @@ function formatUSDC(raw: bigint | undefined) {
 }
 
 function shortAddr(a: string | undefined) {
-  if (!a) return "";
+  if (!a) return "—";
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-export default function TransactionsHistory() {
-  const { data, isLoading } = useTransactionsHistory();
+interface TransactionsHistoryProps {
+  searchQuery?: string;
+}
+
+export default function TransactionsHistory({ searchQuery = "" }: TransactionsHistoryProps) {
+  const { data: txData, isLoading: isTxLoading } = useTransactionsHistory();
+  const { address, isConnected } = useAccount();
+  const { data: analyticsData } = useAnalytics(address);
+
   const [filter, setFilter] = useState<FilterType>("all");
+  const [mineOnly, setMineOnly] = useState(false);
+  const [copiedHash, setCopiedHash] = useState<string | null>(null);
 
+  const me = address?.toLowerCase();
+
+  const copyHash = (hash: string) => {
+    navigator.clipboard.writeText(hash);
+    setCopiedHash(hash);
+    setTimeout(() => setCopiedHash(null), 2000);
+  };
+
+  // Combine on-chain logs, failed transactions, and agent activity logs
+  const combinedItems = useMemo(() => {
+    const list: Array<{
+      id: string;
+      type: string;
+      amount?: bigint;
+      status: string;
+      recipient?: string;
+      txHash?: string;
+      timestamp: number;
+      chain: string;
+      errorReason?: string;
+      from?: string;
+      to?: string;
+      blockNumber?: bigint;
+      paymentId?: string;
+    }> = [];
+
+    // On-chain txs
+    (txData ?? []).forEach((t, idx) => {
+      list.push({
+        id: `tx-${t.txHash}-${idx}`,
+        type: t.type,
+        amount: t.amount,
+        status: t.type === "execute" ? "Confirmed (Bot)" : "Success",
+        recipient: t.to,
+        txHash: t.txHash,
+        timestamp: t.timestamp ?? Date.now(),
+        chain: "Arc Testnet",
+        from: t.from,
+        to: t.to,
+        blockNumber: t.blockNumber,
+        paymentId: t.paymentId ? t.paymentId.toString() : undefined,
+      });
+    });
+
+    // Failed txs from backend DB
+    (analyticsData?.failedTxs ?? []).forEach((f, idx) => {
+      list.push({
+        id: `fail-${f.paymentId}-${idx}`,
+        type: "failed",
+        status: f.state,
+        recipient: undefined,
+        txHash: f.txHash !== "0x" + "0".repeat(64) ? f.txHash : undefined,
+        timestamp: f.timestamp,
+        chain: "Arc Testnet",
+        errorReason: f.reason,
+        from: f.wallet,
+        paymentId: f.paymentId,
+      });
+    });
+
+    // Agent activity logs
+    (analyticsData?.agentLogs ?? []).forEach((a) => {
+      list.push({
+        id: a.id,
+        type: a.action.toLowerCase().includes("execute") ? "agent_exec" : "agent",
+        status: a.status,
+        recipient: a.paymentId ? `Payment #${a.paymentId}` : undefined,
+        txHash: a.txHash,
+        timestamp: a.timestamp,
+        chain: "Arc Bot",
+        errorReason: a.error,
+        from: a.wallet,
+        paymentId: a.paymentId,
+      });
+    });
+
+    // Sort descending by timestamp
+    return list.sort((a, b) => b.timestamp - a.timestamp);
+  }, [txData, analyticsData]);
+
+  // Filtered by Mine / Query / Tab Filter
   const filtered = useMemo(() => {
-    if (!data) return [];
-    if (filter === "all") return data;
-    return data.filter((t) => t.type === filter);
-  }, [data, filter]);
+    return combinedItems.filter((item) => {
+      // Filter by Mine Only
+      if (mineOnly && me) {
+        if (item.from !== me && item.to !== me) return false;
+      }
 
-  const uniqueWallets = useMemo(() => {
-    const set = new Set<string>();
-    for (const tx of data ?? []) {
-      if (tx.from) set.add(tx.from);
-      if (tx.to) set.add(tx.to);
-    }
-    return set.size;
-  }, [data]);
+      // Filter by Tab
+      if (filter !== "all") {
+        if (filter === "agent_exec") {
+          return (
+            (item.type === "execute" || item.type === "agent_exec") &&
+            !!item.txHash &&
+            item.txHash !== "0x" + "0".repeat(64)
+          );
+        }
+        if (filter === "agent" && item.type !== "agent") return false;
+        if (filter === "failed" && item.type !== "failed") return false;
+        if (item.type !== filter) return false;
+      }
+
+      // Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchType = item.type.toLowerCase().includes(q);
+        const matchRecipient = item.recipient?.toLowerCase().includes(q);
+        const matchHash = item.txHash?.toLowerCase().includes(q);
+        const matchReason = item.errorReason?.toLowerCase().includes(q);
+        const matchPid = item.paymentId?.toLowerCase().includes(q);
+        if (!matchType && !matchRecipient && !matchHash && !matchReason && !matchPid) return false;
+      }
+
+      return true;
+    });
+  }, [combinedItems, mineOnly, me, filter, searchQuery]);
+
+  const agentExecutedCount = useMemo(() => {
+    return combinedItems.filter(
+      (item) => (item.type === "execute" || item.type === "agent_exec") && !!item.txHash && item.txHash !== "0x" + "0".repeat(64)
+    ).length;
+  }, [combinedItems]);
 
   return (
-    <div className="tx-history">
-      <div className="tx-history-header">
+    <div className="transaction-center-card">
+      <div className="center-header-row">
         <div>
-          <h2>Transactions</h2>
-          <p>
-            Public on-chain activity. Anyone can verify on{" "}
-            <a
-              href={`https://testnet.arcscan.app/address/${TREASURY_ADDRESS}`}
-              target="_blank"
-              rel="noreferrer"
-              className="tx-verify-link"
-            >
-              ArcScan ↗
-            </a>
-          </p>
+          <h2>Transaction Center</h2>
+          <p className="center-sub">Unified transaction history & agent execution logs</p>
         </div>
-        <div className="tx-summary">
-          <div className="tx-stat">
-            <span className="tx-stat-num">{data?.length ?? 0}</span>
-            <span className="tx-stat-label">Transactions</span>
-          </div>
-          <div className="tx-stat">
-            <span className="tx-stat-num">{uniqueWallets}</span>
-            <span className="tx-stat-label">Wallets</span>
-          </div>
+        <div className="center-actions">
+          <span className="agent-executions-chip">
+            ⚡ {agentExecutedCount} Agent Executed Payments
+          </span>
+          {isConnected && (
+            <button
+              className={`filter-mine-btn ${mineOnly ? "active" : ""}`}
+              onClick={() => setMineOnly(!mineOnly)}
+            >
+              {mineOnly ? "showing mine" : "show mine"}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="tx-filters">
+      {/* 8 Tab Filters Bar */}
+      <div className="transaction-tabs-bar">
         {FILTERS.map((f) => (
           <button
             key={f.value}
-            className={`tx-filter ${filter === f.value ? "active" : ""}`}
             onClick={() => setFilter(f.value)}
+            className={`tab-btn ${filter === f.value ? "active" : ""}`}
           >
             {f.label}
-            {data && f.value !== "all" && (
-              <span className="tx-filter-count">
-                {data.filter((t) => t.type === f.value).length}
-              </span>
-            )}
           </button>
         ))}
       </div>
 
-      <div className="tx-feed">
-        {isLoading ? (
-          <div className="tx-empty">Loading on-chain history…</div>
+      {/* Data Table */}
+      <div className="table-responsive-wrapper">
+        {isTxLoading ? (
+          <div className="center-loading">Loading transaction records…</div>
         ) : filtered.length === 0 ? (
-          <div className="tx-empty">
-            No {filter === "all" ? "" : filter} transactions in the last ~9 000 blocks.
+          <div className="center-empty-state">
+            <div className="empty-icon-circle">📜</div>
+            <h3>No transactions found</h3>
+            <p>Deposit funds or execute a scheduled payment to see records here.</p>
           </div>
         ) : (
-          filtered.map((tx, i) => {
-            const meta = TYPE_META[tx.type];
-            return (
-              <a
-                key={`${tx.txHash}-${i}`}
-                href={`https://testnet.arcscan.app/tx/${tx.txHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="tx-row"
-              >
-                <span
-                  className="tx-icon"
-                  style={{
-                    color: meta.color,
-                    background: `${meta.color}14`,
-                    borderColor: `${meta.color}40`,
-                  }}
-                >
-                  {meta.icon}
-                </span>
-                <div className="tx-main">
-                  <div className="tx-line">
-                    <span className="tx-type">{meta.label}</span>
-                    {tx.amount !== undefined && (
-                      <span className="tx-amount">{formatUSDC(tx.amount)}</span>
-                    )}
-                    {tx.paymentId !== undefined && (
-                      <span className="tx-pid">#{tx.paymentId.toString()}</span>
-                    )}
-                  </div>
-                  <div className="tx-sub">
-                    {tx.from && (
-                      <>
-                        <span className="tx-verb">by</span>
-                        <span className="tx-addr">{shortAddr(tx.from)}</span>
-                      </>
-                    )}
-                    {tx.to && (
-                      <>
-                        <span className="tx-arrow-mini">→</span>
-                        <span className="tx-addr">{shortAddr(tx.to)}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="tx-meta">
-                  <span className="tx-block">block {tx.blockNumber.toString()}</span>
-                  <span className="tx-link">Verify ↗</span>
-                </div>
-              </a>
-            );
-          })
+          <table className="transaction-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Recipient / Payment ID</th>
+                <th>ArcScan Tx Hash</th>
+                <th>Timestamp</th>
+                <th>Chain / Worker</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => {
+                const meta = TYPE_META[row.type] || TYPE_META.deposit;
+
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <span className="type-badge" style={{ color: meta.color, background: `${meta.color}15` }}>
+                        <span className="badge-icon">{meta.icon}</span>
+                        {meta.label}
+                      </span>
+                    </td>
+                    <td className="amount-col">
+                      {row.amount !== undefined ? formatUSDC(row.amount) : "—"}
+                    </td>
+                    <td>
+                      <span className={`status-pill-table ${row.status.toLowerCase().replace(/\s+/g, "-")}`}>
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="recipient-col">
+                      {row.paymentId ? (
+                        <span className="pid-cell">Payment #{row.paymentId}</span>
+                      ) : (
+                        shortAddr(row.recipient)
+                      )}
+                    </td>
+                    <td className="hash-col">
+                      {row.txHash && row.txHash !== "0x" + "0".repeat(64) ? (
+                        <div className="hash-copy-cell">
+                          <a
+                            href={`https://testnet.arcscan.app/tx/${row.txHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hash-link font-mono"
+                          >
+                            {row.txHash.slice(0, 8)}…{row.txHash.slice(-6)} ↗
+                          </a>
+                          <button
+                            onClick={() => copyHash(row.txHash!)}
+                            className="mini-copy-btn"
+                            title="Copy Tx Hash"
+                          >
+                            {copiedHash === row.txHash ? "✓" : "📋"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="time-col">
+                      {new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    </td>
+                    <td className="chain-col">{row.chain}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

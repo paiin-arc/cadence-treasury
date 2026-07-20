@@ -48,6 +48,10 @@ cadence/
 | Treasury | `0xb4A668f7B45c2BBFB89bCb6853E72bFF464c8F44` |
 | Faucet | https://faucet.circle.com |
 
+Arc is EVM-compatible and uses standard Ethereum JSON-RPC method names, but its native gas token is USDC. Native gas accounting uses 18 decimals; ERC-20 USDC transfers/allowances use 6 decimals. The frontend/backend use viem's built-in `arcTestnet` chain and fall back across Arc's documented testnet RPC providers when no custom RPC is configured.
+
+App Kit is useful for cross-chain or wallet-to-wallet primitives like bridge, send, swap, and unified balance. Cadence's core treasury flows are direct smart-contract calls, so App Kit packages are not required unless you add those capabilities.
+
 ---
 
 ## Run locally

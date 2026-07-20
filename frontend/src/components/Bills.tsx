@@ -7,9 +7,16 @@ import {
 } from "wagmi";
 import { decodeEventLog } from "viem";
 import { useQueryClient } from "@tanstack/react-query";
-import { arcTestnet, publicClient, TREASURY_ADDRESS } from "../lib/arc";
+import { arcTestnet, TREASURY_ADDRESS, ESCROW_ADDRESS } from "../lib/arc";
 import { TREASURY_ABI } from "../lib/abi";
+import { ESCROW_ABI } from "../lib/escrowAbi";
+import { USDC_ARC_TESTNET, ERC20_ABI } from "../lib/wagmi";
 import { usePayments } from "../hooks/useTreasury";
+import { useEscrowPayments } from "../hooks/useEscrow";
+import { safeFees } from "../lib/gas";
+import { waitForConfirmation } from "../lib/tx";
+
+type PayMethod = "scheduler" | "escrow";
 
 type Bill = {
   id: string;
@@ -18,7 +25,12 @@ type Bill = {
   recipient: string;
   amountUSDC: string;
   dueDate: string;
+  /** Default "scheduler" for backward compat with existing saved bills. */
+  method?: PayMethod;
+  /** Treasury paymentId when method=scheduler */
   paymentId?: string;
+  /** RefundProtocol payment id when method=escrow */
+  escrowId?: string;
   scheduledAt?: number;
 };
 
@@ -64,11 +76,35 @@ function daysUntil(dueDate: string) {
   return Math.round((due.getTime() - now.getTime()) / 86_400_000);
 }
 
+type BillStatus = "draft" | "settling" | "held" | "paid" | "refunded" | "failed";
+
 export default function Bills() {
   const { address, isConnected } = useAccount();
+
+  return (
+    <BillsForWallet
+      key={address ?? "anon"}
+      address={address}
+      isConnected={isConnected}
+    />
+  );
+}
+
+function BillsForWallet({
+  address,
+  isConnected,
+}: {
+  address?: `0x${string}`;
+  isConnected: boolean;
+}) {
+  const escrowAddr = (ESCROW_ADDRESS ??
+    "0x0000000000000000000000000000000000000000") as `0x${string}`;
+  const escrowConfigured = !!ESCROW_ADDRESS;
+
   const chainId = useChainId();
   const onArc = chainId === arcTestnet.id;
   const queryClient = useQueryClient();
+  const me = address?.toLowerCase();
 
   const [bills, setBills] = useState<Bill[]>(() => loadBills(address));
   const [showForm, setShowForm] = useState(false);
@@ -78,51 +114,87 @@ export default function Bills() {
     recipient: "",
     amountUSDC: "",
     dueDate: todayISO(),
+    method: "scheduler",
   });
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{
+    kind: "ok" | "err";
+    text: string;
+    txHash?: string;
+  } | null>(null);
 
-  // Reload when wallet changes
-  useEffect(() => {
-    setBills(loadBills(address));
-  }, [address]);
-
-  // Persist on every change
   useEffect(() => {
     saveBills(address, bills);
   }, [address, bills]);
 
+  // Treasury balance (for scheduler bills)
   const userBalance = useReadContract({
     address: TREASURY_ADDRESS,
     abi: TREASURY_ABI,
     functionName: "userBalances",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && onArc, refetchInterval: 8_000 },
+    query: { enabled: !!address && onArc, refetchInterval: 30_000 },
+  });
+
+  // Wallet USDC balance (for escrow bills — pay from wallet, not treasury)
+  const walletUsdc = useReadContract({
+    address: USDC_ARC_TESTNET,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && onArc, refetchInterval: 30_000 },
+  });
+
+  // Escrow allowance from connected wallet
+  const escrowAllowance = useReadContract({
+    address: USDC_ARC_TESTNET,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: address ? [address, escrowAddr] : undefined,
+    query: { enabled: !!address && escrowConfigured && onArc, refetchInterval: 30_000 },
   });
 
   const { data: payments } = usePayments(80);
+  const { data: escrowPayments } = useEscrowPayments();
   const { writeContractAsync } = useWriteContract();
 
-  // For each bill that has a paymentId, find its on-chain status from payments[]
+  // Status derivation handles both scheduler and escrow methods
   const billStatus = useMemo(() => {
-    const map = new Map<string, "draft" | "settling" | "paid" | "failed">();
+    const map = new Map<string, BillStatus>();
     for (const b of bills) {
-      if (!b.paymentId) {
-        map.set(b.id, "draft");
-        continue;
+      const method = b.method ?? "scheduler";
+
+      if (method === "scheduler") {
+        if (!b.paymentId) {
+          map.set(b.id, "draft");
+          continue;
+        }
+        const p = payments?.find((pp) => pp.id.toString() === b.paymentId);
+        if (!p) {
+          map.set(b.id, "settling");
+          continue;
+        }
+        if (!p.active && p.cancelled) map.set(b.id, "failed");
+        else if (!p.active) map.set(b.id, "paid");
+        else map.set(b.id, "settling");
+      } else {
+        // escrow
+        if (!b.escrowId) {
+          map.set(b.id, "draft");
+          continue;
+        }
+        const e = escrowPayments?.find((ee) => ee.id.toString() === b.escrowId);
+        if (!e) {
+          map.set(b.id, "held"); // optimistic — just paid, may not be indexed yet
+          continue;
+        }
+        if (e.status === "withdrawn") map.set(b.id, "paid");
+        else if (e.status === "refunded") map.set(b.id, "refunded");
+        else map.set(b.id, "held");
       }
-      const p = payments?.find((pp) => pp.id.toString() === b.paymentId);
-      if (!p) {
-        map.set(b.id, "settling");
-        continue;
-      }
-      // frequency=0 → one-off. !active means executed or cancelled.
-      if (!p.active && p.executedCount > 0) map.set(b.id, "paid");
-      else if (!p.active) map.set(b.id, "failed");
-      else map.set(b.id, "settling");
     }
     return map;
-  }, [bills, payments]);
+  }, [bills, payments, escrowPayments]);
 
   const handleAdd = () => {
     setMsg(null);
@@ -147,9 +219,17 @@ export default function Bills() {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       ...draft,
       recipient: draft.recipient.toLowerCase(),
+      method: draft.method ?? "scheduler",
     };
     setBills((prev) => [newBill, ...prev]);
-    setDraft({ label: "", description: "", recipient: "", amountUSDC: "", dueDate: todayISO() });
+    setDraft({
+      label: "",
+      description: "",
+      recipient: "",
+      amountUSDC: "",
+      dueDate: todayISO(),
+      method: "scheduler",
+    });
     setShowForm(false);
     setMsg({ kind: "ok", text: `Bill "${newBill.label}" saved.` });
   };
@@ -158,13 +238,200 @@ export default function Bills() {
     setBills((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const handleEscrowWithdraw = async (bill: Bill, paymentId: bigint) => {
+    setMsg(null);
+    try {
+      setPayingId(bill.id);
+      const hash = await writeContractAsync({
+        chainId: arcTestnet.id,
+        address: escrowAddr,
+        abi: ESCROW_ABI,
+        functionName: "withdraw",
+        args: [[paymentId]],
+        ...(await safeFees()),
+      });
+      setMsg({ kind: "ok", text: `Withdraw submitted (${hash.slice(0, 10)}…)` });
+      const receipt = await waitForConfirmation(hash, "Withdraw", 90_000);
+      setMsg({
+        kind: "ok",
+        text: receipt
+          ? "Escrow payment withdrawn successfully."
+          : "Withdraw submitted. Arc RPC could not confirm it yet; check ArcScan and the list will refresh automatically.",
+        txHash: hash,
+      });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["escrow:payments"] }),
+      ]);
+    } catch (e: unknown) {
+      const err = e as { shortMessage?: string; message?: string };
+      setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Withdraw failed" });
+    } finally {
+      setPayingId(null);
+    }
+  };
+
+  const handleEscrowRefund = async (bill: Bill, paymentId: bigint) => {
+    setMsg(null);
+    try {
+      setPayingId(bill.id);
+      const hash = await writeContractAsync({
+        chainId: arcTestnet.id,
+        address: escrowAddr,
+        abi: ESCROW_ABI,
+        functionName: "refundByRecipient",
+        args: [paymentId],
+        ...(await safeFees()),
+      });
+      setMsg({ kind: "ok", text: `Refund submitted (${hash.slice(0, 10)}…)` });
+      const receipt = await waitForConfirmation(hash, "Refund", 90_000);
+      setMsg({
+        kind: "ok",
+        text: receipt
+          ? "Escrow payment refunded to payer."
+          : "Refund submitted. Arc RPC could not confirm it yet; check ArcScan and the list will refresh automatically.",
+        txHash: hash,
+      });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["escrow:payments"] }),
+      ]);
+    } catch (e: unknown) {
+      const err = e as { shortMessage?: string; message?: string };
+      setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Refund failed" });
+    } finally {
+      setPayingId(null);
+    }
+  };
+
   const handlePay = async (bill: Bill) => {
     setMsg(null);
     if (!isConnected || !onArc) {
       setMsg({ kind: "err", text: "Connect on Arc Testnet to pay." });
       return;
     }
+    const method = bill.method ?? "scheduler";
     const amountRaw = BigInt(Math.round(Number(bill.amountUSDC) * 1_000_000));
+
+    // ===== Escrow path =====
+    if (method === "escrow") {
+      if (!escrowConfigured) {
+        setMsg({ kind: "err", text: "Escrow contract not configured. Set VITE_ESCROW_ADDRESS." });
+        return;
+      }
+      const wBal = walletUsdc.data as bigint | undefined;
+      if (wBal !== undefined && amountRaw > wBal) {
+        setMsg({
+          kind: "err",
+          text: `${bill.amountUSDC} USDC exceeds your wallet balance (${formatUSDC(Number(wBal) / 1e6)}).`,
+        });
+        return;
+      }
+
+      try {
+        setPayingId(bill.id);
+        const current = (escrowAllowance.data as bigint | undefined) ?? 0n;
+        if (current < amountRaw) {
+          setMsg({
+            kind: "ok",
+            text: "Confirm the approval in your wallet (Rabby/MetaMask)…",
+          });
+          const approveHash = await writeContractAsync({
+            chainId: arcTestnet.id,
+            address: USDC_ARC_TESTNET,
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [escrowAddr, amountRaw],
+            ...(await safeFees()),
+          });
+          setMsg({
+            kind: "ok",
+            text: "Approval submitted, waiting for confirmation…",
+            txHash: approveHash,
+          });
+          const ar = await waitForConfirmation(approveHash, "Approve", 90_000);
+          if (!ar) {
+            setMsg({
+              kind: "ok",
+              text: "Approval submitted, but Arc RPC did not confirm it yet. If your wallet shows it succeeded, try paying again in a few seconds.",
+              txHash: approveHash,
+            });
+            await Promise.allSettled([escrowAllowance.refetch()]);
+            return;
+          }
+          await Promise.allSettled([escrowAllowance.refetch()]);
+        }
+
+        setMsg({ kind: "ok", text: "Confirm escrow payment in your wallet…" });
+        const hash = await writeContractAsync({
+          chainId: arcTestnet.id,
+          address: escrowAddr,
+          abi: ESCROW_ABI,
+          functionName: "pay",
+          args: [bill.recipient as `0x${string}`, amountRaw, address as `0x${string}`],
+          ...(await safeFees()),
+        });
+        setMsg({
+          kind: "ok",
+          text: "Escrow payment submitted, waiting for confirmation…",
+          txHash: hash,
+        });
+        const receipt = await waitForConfirmation(hash, "Pay", 90_000);
+        if (!receipt) {
+          setMsg({
+            kind: "ok",
+            text: "Escrow payment submitted. Arc RPC could not confirm it yet; check ArcScan and the list will refresh automatically.",
+            txHash: hash,
+          });
+          await Promise.allSettled([
+            queryClient.invalidateQueries({ queryKey: ["escrow:payments"] }),
+          ]);
+          return;
+        }
+
+        // Pull escrow id from PaymentCreated event
+        let escrowId: string | undefined;
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: ESCROW_ABI,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (decoded.eventName === "PaymentCreated") {
+              escrowId = (decoded.args as { paymentID: bigint }).paymentID.toString();
+              break;
+            }
+          } catch {
+            /* not our event */
+          }
+        }
+
+        setBills((prev) =>
+          prev.map((b) =>
+            b.id === bill.id ? { ...b, escrowId, scheduledAt: Date.now() } : b
+          )
+        );
+        setMsg({
+          kind: "ok",
+          text: `Held in escrow${escrowId ? ` (#${escrowId})` : ""}. Recipient can withdraw when ready — you can refund as arbiter.`,
+          txHash: hash,
+        });
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: ["escrow:payments"] }),
+        ]);
+      } catch (e: unknown) {
+        const err = e as { shortMessage?: string; message?: string; cause?: { hash?: string } };
+        setMsg({
+          kind: "err",
+          text: err.shortMessage ?? err.message ?? "Escrow pay failed",
+          txHash: err.cause?.hash,
+        });
+      } finally {
+        setPayingId(null);
+      }
+      return;
+    }
+
+    // ===== Scheduler path (original) =====
     const balance = userBalance.data as bigint | undefined;
     if (balance !== undefined && amountRaw > balance) {
       setMsg({
@@ -176,22 +443,34 @@ export default function Bills() {
 
     try {
       setPayingId(bill.id);
+      setMsg({ kind: "ok", text: "Confirm in your wallet (Rabby/MetaMask)…" });
       const hash = await writeContractAsync({
         chainId: arcTestnet.id,
         address: TREASURY_ADDRESS,
         abi: TREASURY_ABI,
         functionName: "schedulePayment",
         args: [bill.recipient as `0x${string}`, amountRaw, 0n, 0n],
+        ...(await safeFees()),
       });
-      setMsg({ kind: "ok", text: `Payment sent (${hash.slice(0, 10)}…), waiting…` });
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash,
-        timeout: 60_000,
-        pollingInterval: 1_500,
+      setMsg({
+        kind: "ok",
+        text: "Payment submitted, waiting for confirmation…",
+        txHash: hash,
       });
-      if (receipt.status !== "success") throw new Error("Schedule reverted");
+      const receipt = await waitForConfirmation(hash, "Schedule", 90_000);
+      if (!receipt) {
+        setMsg({
+          kind: "ok",
+          text: `Bill "${bill.label}" submitted to scheduler. Arc RPC could not confirm it yet; check ArcScan and the list will refresh automatically.`,
+          txHash: hash,
+        });
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: ["payments"] }),
+          queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+        ]);
+        return;
+      }
 
-      // Pull paymentId from PaymentScheduled event in the receipt
       let paymentId: string | undefined;
       for (const log of receipt.logs) {
         try {
@@ -211,20 +490,25 @@ export default function Bills() {
 
       setBills((prev) =>
         prev.map((b) =>
-          b.id === bill.id
-            ? { ...b, paymentId, scheduledAt: Date.now() }
-            : b
+          b.id === bill.id ? { ...b, paymentId, scheduledAt: Date.now() } : b
         )
       );
       setMsg({
         kind: "ok",
         text: `Bill "${bill.label}" sent to scheduler. The bot will settle it within ~60s.`,
+        txHash: hash,
       });
-      queryClient.invalidateQueries({ queryKey: ["payments"] });
-      queryClient.invalidateQueries({ queryKey: ["txHistory"] });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+      ]);
     } catch (e: unknown) {
-      const err = e as { shortMessage?: string; message?: string };
-      setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Pay failed" });
+      const err = e as { shortMessage?: string; message?: string; cause?: { hash?: string } };
+      setMsg({
+        kind: "err",
+        text: err.shortMessage ?? err.message ?? "Pay failed",
+        txHash: err.cause?.hash,
+      });
     } finally {
       setPayingId(null);
     }
@@ -235,7 +519,14 @@ export default function Bills() {
       [...bills].sort((a, b) => {
         const sa = billStatus.get(a.id) ?? "draft";
         const sb = billStatus.get(b.id) ?? "draft";
-        const order = { draft: 0, settling: 1, paid: 2, failed: 3 };
+        const order: Record<BillStatus, number> = {
+          draft: 0,
+          held: 1,
+          settling: 2,
+          paid: 3,
+          refunded: 4,
+          failed: 5,
+        };
         if (order[sa] !== order[sb]) return order[sa] - order[sb];
         return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
       }),
@@ -249,8 +540,9 @@ export default function Bills() {
           <div>
             <h3>Bills</h3>
             <p className="interact-help" style={{ marginTop: 4, marginBottom: 0 }}>
-              Save named bills with a due date. Click <strong>Pay now</strong> to settle —
-              the scheduler bot fires it within ~60s.
+              Save named bills with a due date. <strong>Direct pay</strong> goes through the
+              scheduler bot (~60s). <strong>Escrow</strong> holds USDC until the recipient
+              withdraws — refundable.
             </p>
           </div>
           <button
@@ -328,6 +620,31 @@ export default function Bills() {
               </label>
             </div>
 
+            {/* Payment method toggle */}
+            <div className="bill-method">
+              <span className="bill-method-label">Pay via</span>
+              <div className="bill-method-options">
+                <button
+                  type="button"
+                  className={`bill-method-btn ${(draft.method ?? "scheduler") === "scheduler" ? "active" : ""}`}
+                  onClick={() => setDraft({ ...draft, method: "scheduler" })}
+                >
+                  <strong>Direct</strong>
+                  <span>Treasury balance · ~60s · final</span>
+                </button>
+                <button
+                  type="button"
+                  className={`bill-method-btn ${draft.method === "escrow" ? "active" : ""}`}
+                  onClick={() => setDraft({ ...draft, method: "escrow" })}
+                  disabled={!escrowConfigured}
+                  title={!escrowConfigured ? "Set VITE_ESCROW_ADDRESS to enable" : ""}
+                >
+                  <strong>Escrow</strong>
+                  <span>Wallet USDC · held · refundable</span>
+                </button>
+              </div>
+            </div>
+
             <button className="btn btn-primary form-btn" onClick={handleAdd}>
               Save bill
             </button>
@@ -342,15 +659,34 @@ export default function Bills() {
           <div className="bills-list">
             {sortedBills.map((b) => {
               const status = billStatus.get(b.id) ?? "draft";
+              const method = b.method ?? "scheduler";
               const days = daysUntil(b.dueDate);
               const overdue = status === "draft" && days < 0;
               const dueSoon = status === "draft" && days >= 0 && days <= 3;
+              const idLabel = method === "escrow" ? b.escrowId : b.paymentId;
+              const escrowPayment = method === "escrow" && b.escrowId
+                ? escrowPayments?.find((ee) => ee.id.toString() === b.escrowId)
+                : undefined;
+              const isRecipient = me && escrowPayment?.to === me;
               return (
                 <div className="bill-row" key={b.id}>
                   <div className="bill-row-main">
                     <div className="bill-row-top">
                       <span className="bill-label">{b.label}</span>
+
+                      {/* Method badge */}
+                      <span className={`bill-method-pill ${method}`}>
+                        {method === "escrow" ? "Escrow" : "Direct"}
+                      </span>
+
+                      {/* Status pills */}
                       {status === "paid" && <span className="pill pill-ok">Paid</span>}
+                      {status === "held" && (
+                        <span className="pill pill-warn">Held in escrow</span>
+                      )}
+                      {status === "refunded" && (
+                        <span className="pill pill-cancel">Refunded</span>
+                      )}
                       {status === "settling" && (
                         <span className="pill pill-warn">Settling…</span>
                       )}
@@ -364,9 +700,7 @@ export default function Bills() {
                         <span className="pill pill-due">Due in {days}d</span>
                       )}
                       {status === "draft" && !overdue && !dueSoon && (
-                        <span className="pill pill-scheduled">
-                          Due {b.dueDate}
-                        </span>
+                        <span className="pill pill-scheduled">Due {b.dueDate}</span>
                       )}
                     </div>
                     {b.description && (
@@ -382,10 +716,10 @@ export default function Bills() {
                       </a>
                       <span>·</span>
                       <strong>{formatUSDC(Number(b.amountUSDC))} USDC</strong>
-                      {b.paymentId !== undefined && (
+                      {idLabel !== undefined && (
                         <>
                           <span>·</span>
-                          <span className="bill-pid">#{b.paymentId}</span>
+                          <span className="bill-pid">#{idLabel}</span>
                         </>
                       )}
                     </div>
@@ -395,12 +729,41 @@ export default function Bills() {
                       <button
                         className="btn btn-primary"
                         onClick={() => handlePay(b)}
-                        disabled={payingId === b.id || !isConnected || !onArc}
+                        disabled={
+                          payingId === b.id ||
+                          !isConnected ||
+                          !onArc ||
+                          (method === "escrow" && !escrowConfigured)
+                        }
                       >
-                        {payingId === b.id ? "Paying…" : "Pay now"}
+                        {payingId === b.id
+                          ? method === "escrow"
+                            ? "Locking…"
+                            : "Paying…"
+                          : method === "escrow"
+                            ? "Lock in escrow"
+                            : "Pay now"}
                       </button>
                     )}
-                    {status !== "settling" && (
+                    {method === "escrow" && status === "held" && isRecipient && escrowPayment && (
+                      <>
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => handleEscrowWithdraw(b, escrowPayment.id)}
+                          disabled={payingId === b.id || !isConnected || !onArc}
+                        >
+                          {payingId === b.id ? "Withdrawing…" : "Withdraw"}
+                        </button>
+                        <button
+                          className="btn-cancel"
+                          onClick={() => handleEscrowRefund(b, escrowPayment.id)}
+                          disabled={payingId === b.id || !isConnected || !onArc}
+                        >
+                          {payingId === b.id ? "Refunding…" : "Refund payer"}
+                        </button>
+                      </>
+                    )}
+                    {status !== "settling" && status !== "held" && (
                       <button
                         className="btn-cancel"
                         onClick={() => handleDelete(b.id)}
@@ -417,7 +780,19 @@ export default function Bills() {
 
         {msg && (
           <div className={`interact-msg ${msg.kind}`} style={{ marginTop: 12 }}>
-            {msg.text}
+            <div>{msg.text}</div>
+            {msg.txHash && (
+              <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 12 }}>
+                <span style={{ opacity: 0.7 }}>tx:</span>{" "}
+                <a
+                  href={`https://testnet.arcscan.app/tx/${msg.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {msg.txHash.slice(0, 10)}…{msg.txHash.slice(-6)} ↗
+                </a>
+              </div>
+            )}
           </div>
         )}
       </div>

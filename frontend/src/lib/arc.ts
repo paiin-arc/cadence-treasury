@@ -1,23 +1,35 @@
-import { createPublicClient, http, defineChain } from "viem";
+import { createPublicClient, fallback, http } from "viem";
+import { arcTestnet } from "viem/chains";
 
-export const arcTestnet = defineChain({
-  id: 5042002,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
-  rpcUrls: {
-    default: {
-      http: [import.meta.env.VITE_ARC_RPC || "https://rpc.testnet.arc.network"],
-    },
-  },
-  blockExplorers: {
-    default: { name: "ArcScan", url: "https://testnet.arcscan.app" },
-  },
-  testnet: true,
-});
+const ARC_FALLBACK_RPC_URLS = [
+  "https://rpc.testnet.arc.network",
+  "https://rpc.quicknode.testnet.arc.network",
+  "https://rpc.blockdaemon.testnet.arc.network",
+];
+
+export { arcTestnet };
+
+export const ARC_RPC_URLS = (
+  import.meta.env.VITE_ARC_RPC
+    ? [import.meta.env.VITE_ARC_RPC]
+    : ARC_FALLBACK_RPC_URLS
+).filter(Boolean);
+
+export const ARC_RPC_URL = ARC_RPC_URLS[0];
 
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(),
+  transport: fallback(
+    ARC_RPC_URLS.map((url) =>
+      http(url, {
+        retryCount: 5,
+        retryDelay: 2_000,
+        timeout: 20_000,
+      })
+    ),
+    { rank: false }
+  ),
 });
 
 export const TREASURY_ADDRESS = import.meta.env.VITE_TREASURY_ADDRESS as `0x${string}`;
+export const ESCROW_ADDRESS = (import.meta.env.VITE_ESCROW_ADDRESS as `0x${string}` | undefined) ?? null;

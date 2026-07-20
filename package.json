@@ -1,0 +1,11 @@
+{
+  "name": "usdc-treasury-build",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev & npm --prefix backend run scheduler & npm --prefix backend run api",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run scheduler",
+    "dev:api": "npm --prefix backend run api"
+  }
+}

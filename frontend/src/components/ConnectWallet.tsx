@@ -7,23 +7,28 @@ function shortAddr(a: string) {
 
 export default function ConnectWallet() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
+  const { connect, connectors, isPending, error } = useConnect();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
 
   const onWrongChain = isConnected && chainId !== arcTestnet.id;
-  const injected = connectors[0];
+  const walletConnector = connectors.find((connector) => connector.id === "metaMask") ?? connectors.find((connector) => connector.id === "injected") ?? connectors[0];
+  const hasWallet = Boolean(walletConnector);
 
   if (!isConnected) {
     return (
-      <button
-        className="btn btn-primary connect-btn"
-        onClick={() => connect({ connector: injected })}
-        disabled={isPending || !injected}
-      >
-        {isPending ? "Connecting…" : "Connect Wallet"}
-      </button>
+      <div className="connect-wallet-stack">
+        <button
+          className="btn btn-primary connect-btn"
+          onClick={() => walletConnector && connect({ connector: walletConnector })}
+          disabled={isPending || !hasWallet}
+        >
+          {isPending ? "Connecting…" : hasWallet ? "Connect Wallet" : "Wallet not detected"}
+        </button>
+        {!hasWallet && <small className="muted">Install MetaMask or Rabby and refresh the page.</small>}
+        {error && <small className="muted">{error.message}</small>}
+      </div>
     );
   }
 

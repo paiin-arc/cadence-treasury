@@ -4,12 +4,13 @@ import {
   useChainId,
   useReadContract,
   useWriteContract,
-  useWaitForTransactionReceipt,
 } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
-import { arcTestnet, publicClient, TREASURY_ADDRESS } from "../lib/arc";
+import { arcTestnet, TREASURY_ADDRESS } from "../lib/arc";
 import { TREASURY_ABI } from "../lib/abi";
 import { USDC_ARC_TESTNET, ERC20_ABI } from "../lib/wagmi";
+import { safeFees } from "../lib/gas";
+import { waitForConfirmation } from "../lib/tx";
 
 const FAUCET_URL = "https://faucet.circle.com";
 
@@ -37,14 +38,14 @@ export default function InteractPanel() {
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [busy, setBusy] = useState<"approve" | "deposit" | "withdraw" | null>(null);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string; txHash?: `0x${string}` } | null>(null);
 
   const walletUsdc = useReadContract({
     address: USDC_ARC_TESTNET,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && onArc, refetchInterval: 8_000 },
+    query: { enabled: !!address && onArc, refetchInterval: 30_000 },
   });
 
   const treasuryUserBalance = useReadContract({
@@ -52,7 +53,7 @@ export default function InteractPanel() {
     abi: TREASURY_ABI,
     functionName: "userBalances",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && onArc, refetchInterval: 8_000 },
+    query: { enabled: !!address && onArc, refetchInterval: 30_000 },
   });
 
   const allowance = useReadContract({
@@ -60,19 +61,20 @@ export default function InteractPanel() {
     abi: ERC20_ABI,
     functionName: "allowance",
     args: address ? [address, TREASURY_ADDRESS] : undefined,
-    query: { enabled: !!address && onArc, refetchInterval: 8_000 },
+    query: { enabled: !!address && onArc, refetchInterval: 30_000 },
   });
 
   const { writeContractAsync } = useWriteContract();
-  const [pendingHash, setPendingHash] = useState<`0x${string}` | undefined>();
-  const txReceipt = useWaitForTransactionReceipt({ hash: pendingHash });
 
-  const refreshAll = () => {
-    walletUsdc.refetch();
-    treasuryUserBalance.refetch();
-    allowance.refetch();
-    queryClient.invalidateQueries({ queryKey: ["treasuryBalance"] });
-    queryClient.invalidateQueries({ queryKey: ["recentEvents"] });
+  const refreshAll = async () => {
+    await Promise.allSettled([
+      walletUsdc.refetch(),
+      treasuryUserBalance.refetch(),
+      allowance.refetch(),
+      queryClient.invalidateQueries({ queryKey: ["treasuryBalance"] }),
+      queryClient.invalidateQueries({ queryKey: ["recentEvents"] }),
+      queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+    ]);
   };
 
   const handleDeposit = async () => {
@@ -97,18 +99,24 @@ export default function InteractPanel() {
           abi: ERC20_ABI,
           functionName: "approve",
           args: [TREASURY_ADDRESS, amount],
+          ...(await safeFees()),
         });
-        setPendingHash(approveHash);
-        setMsg({ kind: "ok", text: `Approval sent (${approveHash.slice(0, 10)}…), waiting…` });
-        const approveReceipt = await publicClient.waitForTransactionReceipt({
-          hash: approveHash,
-          timeout: 60_000,
-          pollingInterval: 1_500,
+        setMsg({
+          kind: "ok",
+          text: `Approval sent (${approveHash.slice(0, 10)}…), waiting…`,
+          txHash: approveHash,
         });
-        if (approveReceipt.status !== "success") {
-          throw new Error(`Approval reverted (${approveHash.slice(0, 10)}…)`);
+        const approvalReceipt = await waitForConfirmation(approveHash, "Approval");
+        if (!approvalReceipt) {
+          setMsg({
+            kind: "ok",
+            text: "Approval was submitted, but Arc RPC did not confirm it yet. If your wallet shows it succeeded, try Deposit again in a few seconds.",
+            txHash: approveHash,
+          });
+          await refreshAll();
+          return;
         }
-        await allowance.refetch();
+        await Promise.allSettled([allowance.refetch()]);
       }
 
       setBusy("deposit");
@@ -118,20 +126,29 @@ export default function InteractPanel() {
         abi: TREASURY_ABI,
         functionName: "deposit",
         args: [amount],
+        ...(await safeFees()),
       });
-      setPendingHash(depositHash);
-      setMsg({ kind: "ok", text: `Deposit sent (${depositHash.slice(0, 10)}…), waiting…` });
-      const depositReceipt = await publicClient.waitForTransactionReceipt({
-        hash: depositHash,
-        timeout: 60_000,
-        pollingInterval: 1_500,
+      setMsg({
+        kind: "ok",
+        text: `Deposit sent (${depositHash.slice(0, 10)}…), waiting…`,
+        txHash: depositHash,
       });
-      if (depositReceipt.status !== "success") {
-        throw new Error(`Deposit reverted (${depositHash.slice(0, 10)}…)`);
+      const depositReceipt = await waitForConfirmation(depositHash, "Deposit");
+      if (depositReceipt) {
+        setMsg({
+          kind: "ok",
+          text: `Deposit confirmed: ${depositHash.slice(0, 12)}…`,
+          txHash: depositHash,
+        });
+      } else {
+        setMsg({
+          kind: "ok",
+          text: "Deposit submitted. Arc RPC could not confirm it yet, but the tx may already be mined. Check ArcScan and balances will refresh automatically.",
+          txHash: depositHash,
+        });
       }
-      setMsg({ kind: "ok", text: `Deposit confirmed: ${depositHash.slice(0, 12)}…` });
       setDepositAmount("");
-      refreshAll();
+      await refreshAll();
     } catch (e: unknown) {
       const err = e as { shortMessage?: string; message?: string };
       setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Transaction failed" });
@@ -160,20 +177,23 @@ export default function InteractPanel() {
         abi: TREASURY_ABI,
         functionName: "withdraw",
         args: [amount],
+        ...(await safeFees()),
       });
-      setPendingHash(hash);
-      setMsg({ kind: "ok", text: `Withdraw sent (${hash.slice(0, 10)}…), waiting…` });
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash,
-        timeout: 60_000,
-        pollingInterval: 1_500,
+      setMsg({
+        kind: "ok",
+        text: `Withdraw sent (${hash.slice(0, 10)}…), waiting…`,
+        txHash: hash,
       });
-      if (receipt.status !== "success") {
-        throw new Error(`Withdraw reverted (${hash.slice(0, 10)}…)`);
-      }
-      setMsg({ kind: "ok", text: `Withdraw confirmed: ${hash.slice(0, 12)}…` });
+      const receipt = await waitForConfirmation(hash, "Withdraw");
+      setMsg({
+        kind: "ok",
+        text: receipt
+          ? `Withdraw confirmed: ${hash.slice(0, 12)}…`
+          : "Withdraw submitted. Arc RPC could not confirm it yet, but the tx may already be mined. Check ArcScan and balances will refresh automatically.",
+        txHash: hash,
+      });
       setWithdrawAmount("");
-      refreshAll();
+      await refreshAll();
     } catch (e: unknown) {
       const err = e as { shortMessage?: string; message?: string };
       setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Transaction failed" });
@@ -284,18 +304,18 @@ export default function InteractPanel() {
 
       {msg && (
         <div className={`interact-msg ${msg.kind}`}>
-          {msg.text}
-          {pendingHash && txReceipt.isSuccess && msg.kind === "ok" && (
-            <>
-              {" — "}
+          <div>{msg.text}</div>
+          {msg.txHash && (
+            <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 12 }}>
+              <span style={{ opacity: 0.7 }}>tx:</span>{" "}
               <a
-                href={`https://testnet.arcscan.app/tx/${pendingHash}`}
+                href={`https://testnet.arcscan.app/tx/${msg.txHash}`}
                 target="_blank"
                 rel="noreferrer"
               >
-                view on ArcScan
+                {msg.txHash.slice(0, 10)}…{msg.txHash.slice(-6)} ↗
               </a>
-            </>
+            </div>
           )}
         </div>
       )}

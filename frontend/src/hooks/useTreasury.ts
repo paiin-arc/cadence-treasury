@@ -31,12 +31,32 @@ export type TxHistoryItem = {
   from?: string;
   to?: string;
   paymentId?: bigint;
+  timestamp?: number;
 };
 
-// Arc public RPC limits getLogs to a 9000-block range. Walk backwards in chunks
-// so we can pull multi-day history. 35 chunks × 9000 ≈ ~3-4 days at sub-second blocks.
+// Arc public RPC limits getLogs to a 9000-block range AND rate-limits aggressive
+// callers. We pull 12 chunks (~1.5 day at sub-second blocks) and cap concurrency
+// at 3 to stay under the 429 ceiling.
 const CHUNK_SIZE = 9000n;
-const MAX_CHUNKS = 35;
+const MAX_CHUNKS = 12;
+const CONCURRENCY = 3;
+
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= tasks.length) return;
+      results[i] = await tasks[i]();
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function paginatedLogs<T = any>(event: any): Promise<T[]> {
@@ -49,20 +69,19 @@ async function paginatedLogs<T = any>(event: any): Promise<T[]> {
     if (from === 0n) break;
     to = from - 1n;
   }
-  const results = await Promise.all(
-    ranges.map(async ({ from, to }) => {
-      try {
-        return await publicClient.getLogs({
-          address: TREASURY_ADDRESS,
-          event,
-          fromBlock: from,
-          toBlock: to,
-        });
-      } catch {
-        return [];
-      }
-    })
-  );
+  const tasks = ranges.map(({ from, to }) => async () => {
+    try {
+      return await publicClient.getLogs({
+        address: TREASURY_ADDRESS,
+        event,
+        fromBlock: from,
+        toBlock: to,
+      });
+    } catch {
+      return [];
+    }
+  });
+  const results = await runWithConcurrency(tasks, CONCURRENCY);
   return results.flat() as T[];
 }
 
@@ -77,7 +96,8 @@ export function useTreasuryBalance() {
       });
       return Number(raw) / 1e6;
     },
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }
 
@@ -97,18 +117,22 @@ export function usePayments(count: number = 10) {
       const fromBlock = latestBlock > 9000n ? latestBlock - 9000n : 0n;
 
       const [executedLogs, cancelledLogs] = await Promise.all([
-        publicClient.getLogs({
-          address: TREASURY_ADDRESS,
-          event: PAYMENT_EXECUTED_EVENT,
-          fromBlock,
-          toBlock: "latest",
-        }),
-        publicClient.getLogs({
-          address: TREASURY_ADDRESS,
-          event: PAYMENT_CANCELLED_EVENT,
-          fromBlock,
-          toBlock: "latest",
-        }),
+        publicClient
+          .getLogs({
+            address: TREASURY_ADDRESS,
+            event: PAYMENT_EXECUTED_EVENT,
+            fromBlock,
+            toBlock: "latest",
+          })
+          .catch(() => []),
+        publicClient
+          .getLogs({
+            address: TREASURY_ADDRESS,
+            event: PAYMENT_CANCELLED_EVENT,
+            fromBlock,
+            toBlock: "latest",
+          })
+          .catch(() => []),
       ]);
 
       const executedCounts = new Map<string, number>();
@@ -120,8 +144,11 @@ export function usePayments(count: number = 10) {
         cancelledLogs.map((l) => l.args.paymentId?.toString() ?? "")
       );
 
+      const start = Math.max(Number(nextId) - limit, 0);
+      const ids = Array.from({ length: limit }, (_, offset) => start + offset).reverse();
+
       const payments = [];
-      for (let i = 0; i < limit; i++) {
+      for (const i of ids) {
         const p = await publicClient.readContract({
           address: TREASURY_ADDRESS,
           abi: TREASURY_ABI,
@@ -145,7 +172,8 @@ export function usePayments(count: number = 10) {
       }
       return payments;
     },
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }
 
@@ -177,8 +205,8 @@ export function useTreasuryStats() {
         paidOutCount: executedLogs.length,
       };
     },
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }
 
@@ -263,12 +291,38 @@ export function useTransactionsHistory() {
       ];
 
       items.sort((a, b) => Number(b.blockNumber - a.blockNumber));
+
+      // Resolve timestamps for the first 30 items
+      const visibleItems = items.slice(0, 30);
+      await Promise.all(
+        visibleItems.map(async (item) => {
+          item.timestamp = await getBlockTime(item.blockNumber);
+        })
+      );
+
       return items;
     },
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }
+
+const blockTimeCache = new Map<bigint, number>();
+
+async function getBlockTime(blockNumber: bigint): Promise<number> {
+  if (blockTimeCache.has(blockNumber)) {
+    return blockTimeCache.get(blockNumber)!;
+  }
+  try {
+    const block = await publicClient.getBlock({ blockNumber });
+    const ts = Number(block.timestamp) * 1000;
+    blockTimeCache.set(blockNumber, ts);
+    return ts;
+  } catch {
+    return Date.now();
+  }
+}
+
 
 export function useRecentEvents() {
   return useQuery({
@@ -289,6 +343,54 @@ export function useRecentEvents() {
         blockNumber: log.blockNumber?.toString(),
       }));
     },
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }
+
+export type AgentLog = {
+  id: string;
+  action: string;
+  trigger: string;
+  status: "success" | "failed" | "pending";
+  timestamp: number;
+  wallet?: string;
+  paymentId?: string;
+  error?: string;
+  txHash?: string;
+};
+
+export type FailedTx = {
+  txHash: string;
+  timestamp: number;
+  reason: string;
+  retryCount: number;
+  state: "Retrying" | "Failed" | "Resolved";
+  wallet: string;
+  paymentId?: string;
+};
+
+export type AnalyticsData = {
+  agentLogs: AgentLog[];
+  failedTxs: FailedTx[];
+};
+
+export function useAnalytics(walletAddress: string | undefined) {
+  return useQuery<AnalyticsData>({
+    queryKey: ["analytics", walletAddress],
+    queryFn: async () => {
+      if (!walletAddress) {
+        return { agentLogs: [], failedTxs: [] };
+      }
+      
+      const res = await fetch(`http://localhost:8080/api/analytics?wallet=${walletAddress.toLowerCase()}`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch analytics");
+      }
+      return res.json() as Promise<AnalyticsData>;
+    },
+    refetchInterval: 10_000,
+    enabled: !!walletAddress,
+  });
+}
+

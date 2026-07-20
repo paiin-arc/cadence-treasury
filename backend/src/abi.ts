@@ -84,4 +84,18 @@ export const TREASURY_ABI = [
       { name: "amount", type: "uint256", indexed: false },
     ],
   },
+  {
+    name: "Withdrawn",
+    type: "event",
+    inputs: [
+      { name: "user", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    name: "PaymentCancelled",
+    type: "event",
+    inputs: [{ name: "paymentId", type: "uint256", indexed: true }],
+  },
 ] as const;
+

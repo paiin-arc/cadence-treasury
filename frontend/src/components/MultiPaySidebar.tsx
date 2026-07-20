@@ -6,8 +6,12 @@ import {
   useWriteContract,
 } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
-import { arcTestnet, publicClient, TREASURY_ADDRESS } from "../lib/arc";
+import { decodeEventLog } from "viem";
+import { arcTestnet, TREASURY_ADDRESS } from "../lib/arc";
 import { TREASURY_ABI } from "../lib/abi";
+import { safeFees } from "../lib/gas";
+import { recordScheduledPayments } from "../lib/paymentJournal";
+import { waitForConfirmation } from "../lib/tx";
 
 const SLOTS = [0, 1, 2, 3];
 const FREQUENCY_OPTIONS = [
@@ -46,7 +50,7 @@ export default function MultiPaySidebar() {
     abi: TREASURY_ABI,
     functionName: "userBalances",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && onArc, refetchInterval: 8_000 },
+    query: { enabled: !!address && onArc, refetchInterval: 30_000 },
   });
 
   const maxTx = useReadContract({
@@ -137,25 +141,68 @@ export default function MultiPaySidebar() {
         abi: TREASURY_ABI,
         functionName: "schedulePaymentBatch",
         args: [recipients, amounts, frequencies, delays],
+        ...(await safeFees()),
       });
 
       setMsg({ kind: "ok", text: `Sent (${hash.slice(0, 10)}…), waiting for confirmation…` });
 
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash,
-        timeout: 60_000,
-        pollingInterval: 1_500,
-      });
-      if (receipt.status !== "success") throw new Error("Batch reverted");
+      const receipt = await waitForConfirmation(hash, "Batch");
+      if (!receipt) {
+        setMsg({
+          kind: "ok",
+          text: `Batch submitted (${hash.slice(0, 10)}…). Arc RPC could not confirm it yet; check ArcScan and the list will refresh automatically.`,
+        });
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: ["payments"] }),
+          queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+          queryClient.invalidateQueries({ queryKey: ["treasuryStats"] }),
+        ]);
+        return;
+      }
+
+      const scheduledIds: string[] = [];
+      for (const log of receipt.logs) {
+        try {
+          const decoded = decodeEventLog({
+            abi: TREASURY_ABI,
+            data: log.data,
+            topics: log.topics,
+          });
+          if (decoded.eventName === "PaymentScheduled") {
+            scheduledIds.push((decoded.args as { paymentId: bigint }).paymentId.toString());
+          }
+        } catch {
+          /* not a treasury event */
+        }
+      }
+
+      if (address && scheduledIds.length > 0) {
+        recordScheduledPayments(
+          address,
+          scheduledIds.map((id, index) => ({
+            id,
+            owner: address.toLowerCase(),
+            recipient: recipients[index],
+            amountRaw: amounts[index].toString(),
+            frequency: freqSeconds,
+            delaySeconds: delay * 60,
+            txHash: hash,
+            scheduledAt: Date.now(),
+            source: "batch",
+          }))
+        );
+      }
 
       setMsg({
         kind: "ok",
-        text: `Scheduled ${recipients.length} payment${recipients.length === 1 ? "" : "s"} in one tx · ${hash.slice(0, 10)}…`,
+        text: `Scheduled ${recipients.length} payment${recipients.length === 1 ? "" : "s"}${scheduledIds.length > 0 ? ` (#${scheduledIds.join(", #")})` : ""} in one tx · ${hash.slice(0, 10)}…`,
       });
       setRows(SLOTS.map(() => ({ recipient: "", amount: "" })));
-      queryClient.invalidateQueries({ queryKey: ["payments"] });
-      queryClient.invalidateQueries({ queryKey: ["txHistory"] });
-      queryClient.invalidateQueries({ queryKey: ["treasuryStats"] });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["txHistory"] }),
+        queryClient.invalidateQueries({ queryKey: ["treasuryStats"] }),
+      ]);
     } catch (e: unknown) {
       const err = e as { shortMessage?: string; message?: string };
       setMsg({ kind: "err", text: err.shortMessage ?? err.message ?? "Tx failed" });
