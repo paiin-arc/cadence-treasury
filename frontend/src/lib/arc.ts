@@ -31,5 +31,5 @@ export const publicClient = createPublicClient({
   ),
 });
 
-export const TREASURY_ADDRESS = import.meta.env.VITE_TREASURY_ADDRESS as `0x${string}`;
-export const ESCROW_ADDRESS = (import.meta.env.VITE_ESCROW_ADDRESS as `0x${string}` | undefined) ?? null;
+export const TREASURY_ADDRESS = (import.meta.env.VITE_TREASURY_ADDRESS as `0x${string}`) || "0xb4A668f7B45c2BBFB89bCb6853E72bFF464c8F44";
+export const ESCROW_ADDRESS = (import.meta.env.VITE_ESCROW_ADDRESS as `0x${string}`) || "0x6FefFBC84CcaFDC93883a45c38622c2a0505963E";
