@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useAccount, useDisconnect } from "wagmi";
 import ConnectWallet from "./ConnectWallet";
+import cadenceLogoUrl from "../assets/cadence-logo.png";
 
 export type TabId =
   | "dashboard"
@@ -130,9 +131,12 @@ export default function Sidebar({
       {/* Top Brand & Collapse Toggle */}
       <div className="sidebar-brand-row">
         <div className="brand-logo-area">
-          <div className="brand-icon-glow">
-            <span className="brand-dot-pulse" />
-          </div>
+          <img
+            src={cadenceLogoUrl}
+            alt="Cadence Logo"
+            className="brand-logo-img"
+            style={{ width: "32px", height: "32px", objectFit: "contain", borderRadius: "6px" }}
+          />
           {!collapsed && (
             <div className="brand-text-block">
               <span className="brand-title">CADENCE</span>

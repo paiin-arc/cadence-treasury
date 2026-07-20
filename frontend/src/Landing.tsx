@@ -1,4 +1,5 @@
 import ConnectWallet from "./components/ConnectWallet";
+import cadenceLogoUrl from "./assets/cadence-logo.png";
 
 const TWITTER_URL = "https://twitter.com/paiin_ip";
 
@@ -147,8 +148,8 @@ export default function Landing() {
   return (
     <div className="landing-sendero">
       <nav className="sn-nav">
-        <div className="sn-brand">
-          <span className="sn-brand-dot" />
+        <div className="sn-brand" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <img src={cadenceLogoUrl} alt="Cadence Logo" style={{ width: "22px", height: "22px", objectFit: "contain", borderRadius: "4px" }} />
           CADENCE
         </div>
         <div className="sn-nav-center">
