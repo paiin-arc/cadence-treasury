@@ -189,8 +189,17 @@ export default function AppKitPanel() {
           chain,
           transport:
             chain.id === arcTestnet.id
-              ? fallback(ARC_RPC_URLS.map((url) => http(url, { retryCount: 2, timeout: 20_000 })), { rank: false })
-              : http(),
+              ? fallback(
+                  ARC_RPC_URLS.map((url) =>
+                    http(url, {
+                      retryCount: 5,
+                      retryDelay: 1_500,
+                      timeout: 25_000,
+                    })
+                  ),
+                  { rank: false }
+                )
+              : http(undefined, { retryCount: 3, retryDelay: 1_000 }),
         }) as any,
       capabilities: { addressContext: "user-controlled" },
     });
@@ -210,11 +219,17 @@ export default function AppKitPanel() {
           detail: hash ? `Transaction confirmed: ${short(hash)}` : summarize(result),
           href,
         });
-      } catch (err) {
+      } catch (err: any) {
+        const rawMsg = err?.shortMessage ?? err?.message ?? String(err);
+        const isRateLimited = rawMsg.includes("429") || rawMsg.toLowerCase().includes("too many requests");
+        const detail = isRateLimited
+          ? "⚠️ Public Arc RPC Rate Limited (HTTP 429). Public testnet RPC is busy; retrying automatically in a few seconds..."
+          : rawMsg;
+
         addLog({
           action: label,
           status: "error",
-          detail: err instanceof Error ? err.message : String(err),
+          detail,
         });
       } finally {
         setBusy(null);
