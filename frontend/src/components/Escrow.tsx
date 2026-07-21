@@ -147,6 +147,16 @@ export default function Escrow() {
       if (current < amt) {
         setBusy("approve");
         setMsg({ kind: "ok", text: "Approving escrow to spend USDC…" });
+
+        // Debug: log the exact approval tx so you can verify it's ERC20 approve, not NFT
+        console.log("[Escrow:approve]", {
+          tokenContract: USDC_ARC_TESTNET,
+          abi: "ERC20 — approve(address,uint256)",
+          functionName: "approve",
+          spender: escrowAddr,
+          amount: amt.toString(),
+        });
+
         const approveHash = await writeContractAsync({
           chainId: arcTestnet.id,
           address: USDC_ARC_TESTNET,
