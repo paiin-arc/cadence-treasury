@@ -33,7 +33,7 @@ contract RefundProtocol is EIP712 {
     address public arbiter;
     mapping(uint256 => Payment) public payments;
     mapping(address => uint256) public balances;
-    mapping(address => uint256) public debts;
+
     mapping(bytes32 => bool) public withdrawalHashes;
 
     event PaymentCreated(
@@ -58,6 +58,7 @@ contract RefundProtocol is EIP712 {
     error WithdrawalHashAlreadyUsed();
     error WithdrawalHashExpired();
     error PaymentRefunded(uint256 paymentID);
+    error PaymentAlreadyWithdrawn(uint256 paymentID);
     error MismatchedEarlyWithdrawalArrays();
 
     constructor(address _arbiter, address _usdc, string memory eip712Name, string memory eip712version)
@@ -98,6 +99,12 @@ contract RefundProtocol is EIP712 {
         if (msg.sender != payment.to) {
             revert CallerNotAllowed();
         }
+        if (payment.refunded) {
+            revert PaymentRefunded(paymentID);
+        }
+        if (payment.withdrawnAmount > 0) {
+            revert PaymentAlreadyWithdrawn(paymentID);
+        }
 
         uint256 recipientBalance = balances[payment.to];
 
@@ -113,27 +120,22 @@ contract RefundProtocol is EIP712 {
     function refundByArbiter(uint256 paymentID) external onlyArbiter {
         Payment memory payment = payments[paymentID];
 
-        uint256 recipientBalance = balances[payment.to];
-
-        if (payment.amount <= recipientBalance) {
-            balances[payment.to] = recipientBalance - payment.amount;
-            return _executeRefund(paymentID, payment);
+        if (payment.refunded) {
+            revert PaymentRefunded(paymentID);
+        }
+        if (payment.withdrawnAmount > 0) {
+            revert PaymentAlreadyWithdrawn(paymentID);
         }
 
-        uint256 arbiterBalance = balances[arbiter];
+        uint256 recipientBalance = balances[payment.to];
 
-        if (payment.amount > arbiterBalance) {
+        if (payment.amount > recipientBalance) {
             revert InsufficientFunds();
         }
 
-        balances[arbiter] = arbiterBalance - payment.amount;
-        debts[payment.to] += payment.amount;
+        balances[payment.to] = recipientBalance - payment.amount;
 
         _executeRefund(paymentID, payment);
-    }
-
-    function settleDebt(address recipient) external {
-        _settleDebt(recipient);
     }
 
     function depositArbiterFunds(uint256 amount) external onlyArbiter {
@@ -152,7 +154,6 @@ contract RefundProtocol is EIP712 {
     }
 
     function withdraw(uint256[] calldata paymentIDs) external {
-        _settleDebt(msg.sender);
 
         uint256 totalAmount = 0;
 
@@ -262,26 +263,21 @@ contract RefundProtocol is EIP712 {
         return _hashEarlyWithdrawalInfo(paymentIDs, withdrawalAmounts, feeAmount, expiry, salt);
     }
 
+    function canRefund(uint256 paymentID) public view returns (bool) {
+        Payment memory p = payments[paymentID];
+        return !p.refunded && p.withdrawnAmount == 0;
+    }
+
     function _executeRefund(uint256 paymentID, Payment memory payment) internal {
         if (payment.refunded) {
             revert PaymentRefunded(paymentID);
         }
-        fiatToken.safeTransfer(payment.refundTo, payment.amount);
 
         payments[paymentID].refunded = true;
 
+        fiatToken.safeTransfer(payment.refundTo, payment.amount);
+
         emit Refund(paymentID, payment.refundTo, payment.amount);
-    }
-
-    function _settleDebt(address recipient) internal {
-        uint256 recipientDebt = debts[recipient];
-        uint256 recipientBalance = balances[recipient];
-
-        uint256 settleAmount = recipientBalance < recipientDebt ? recipientBalance : recipientDebt;
-
-        balances[recipient] = recipientBalance - settleAmount;
-        balances[arbiter] += settleAmount;
-        debts[recipient] = recipientDebt - settleAmount;
     }
 
     function _hashEarlyWithdrawalInfo(

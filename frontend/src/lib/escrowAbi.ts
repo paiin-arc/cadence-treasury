@@ -36,6 +36,13 @@ export const ESCROW_ABI = [
     outputs: [{ name: "", type: "address" }],
   },
   {
+    name: "canRefund",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "paymentID", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
     name: "fiatToken",
     type: "function",
     stateMutability: "view",

@@ -294,7 +294,7 @@ export default function Escrow() {
             <h3>Create escrow</h3>
             <p className="interact-help" style={{ marginTop: 4, marginBottom: 0 }}>
               Lock USDC into the escrow contract. Recipient withdraws when ready.
-              Arbiter can refund if the deal goes sideways.
+              Refunds are only available while funds remain unwithdrawn. Once withdrawn, payroll becomes final.
             </p>
           </div>
           <span className="schedule-balance">
@@ -482,11 +482,12 @@ export default function Escrow() {
         {/* Arbiter note for sent view */}
         {view === "sent" && (
           <div className="escrow-arbiter-note">
-            <strong>Need to refund as arbiter?</strong>
+            <strong>Refund policy</strong>
             <p>
+              Refunds are available only while funds remain unwithdrawn.
+              Once the employee withdraws, payroll becomes final and irreversible.
               The arbiter on this contract is{" "}
-              <code>{arbiter ? shortAddr(arbiter) : "…"}</code> (your Circle scheduler wallet),
-              not the wallet you connected. Run:
+              <code>{arbiter ? shortAddr(arbiter) : "…"}</code> (your Circle scheduler wallet).
             </p>
             <pre>
               <code>
@@ -496,8 +497,8 @@ npx tsx --env-file=.env scripts/refund-escrow.ts <paymentId>`}
             </pre>
             {userIsArbiter && (
               <p style={{ marginTop: 8, color: "var(--c-accent)" }}>
-                <strong>Note:</strong> Your connected wallet IS the arbiter — but the Phase B
-                UI still uses the CLI for arbiter refunds to keep Rabby and Circle wallets
+                <strong>Note:</strong> Your connected wallet IS the arbiter — but the
+                UI uses the CLI for arbiter refunds to keep Rabby and Circle wallets
                 isolated.
               </p>
             )}
