@@ -1,4 +1,4 @@
-import { createPublicClient, fallback, http } from "viem";
+import { createPublicClient, fallback, http, getAddress } from "viem";
 import { arcTestnet } from "viem/chains";
 
 const ARC_FALLBACK_RPC_URLS = [
@@ -31,5 +31,17 @@ export const publicClient = createPublicClient({
   ),
 });
 
-export const TREASURY_ADDRESS = (import.meta.env.VITE_TREASURY_ADDRESS as `0x${string}`) || "0xb4A668f7B45c2BBFB89bCb6853E72bFF464c8F44";
-export const ESCROW_ADDRESS = (import.meta.env.VITE_ESCROW_ADDRESS as `0x${string}`) || "0x6FefFBC84CcaFDC93883a45c38622c2a0505963E";
+/**
+ * Normalize addresses via getAddress() to ensure valid EIP-55 checksums.
+ * Trim env values to strip hidden whitespace / carriage-return characters.
+ */
+function safeAddr(raw: string): `0x${string}` {
+  return getAddress(raw.trim()) as `0x${string}`;
+}
+
+export const TREASURY_ADDRESS = safeAddr(
+  (import.meta.env.VITE_TREASURY_ADDRESS as string) || "0xb4A668f7B45c2BBFB89bCb6853E72bFF464c8F44"
+);
+export const ESCROW_ADDRESS = safeAddr(
+  (import.meta.env.VITE_ESCROW_ADDRESS as string) || "0x6FefFBC84CcaFDC93883a45c38622c2a0505963E"
+);

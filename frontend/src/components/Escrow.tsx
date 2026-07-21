@@ -5,6 +5,7 @@ import {
   useReadContract,
   useWriteContract,
 } from "wagmi";
+import { getAddress } from "viem";
 import { useQueryClient } from "@tanstack/react-query";
 import { arcTestnet, ESCROW_ADDRESS } from "../lib/arc";
 import { ESCROW_ABI } from "../lib/escrowAbi";
@@ -114,7 +115,12 @@ export default function Escrow() {
 
   const handleCreate = async () => {
     setMsg(null);
-    if (!/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
+
+    // Validate + checksum the recipient address via viem's getAddress()
+    let checksummedRecipient: `0x${string}`;
+    try {
+      checksummedRecipient = getAddress(recipient.trim()) as `0x${string}`;
+    } catch {
       setMsg({ kind: "err", text: "Recipient must be a valid 0x address." });
       return;
     }
@@ -127,6 +133,14 @@ export default function Escrow() {
       setMsg({ kind: "err", text: "Amount exceeds your wallet USDC balance." });
       return;
     }
+
+    // Debug: log all addresses before sending the tx
+    console.log("[Escrow:handleCreate]", {
+      recipient: checksummedRecipient,
+      escrowAddress: escrowAddr,
+      amount: amt.toString(),
+      refundTo: address,
+    });
 
     try {
       const current = (allowance.data as bigint | undefined) ?? 0n;
@@ -161,7 +175,7 @@ export default function Escrow() {
         address: escrowAddr,
         abi: ESCROW_ABI,
         functionName: "pay",
-        args: [recipient.toLowerCase() as `0x${string}`, amt, address as `0x${string}`],
+        args: [checksummedRecipient, amt, address as `0x${string}`],
         ...(await safeFees()),
       } as any);
       const receipt = await waitForConfirmation(hash, "Pay");
