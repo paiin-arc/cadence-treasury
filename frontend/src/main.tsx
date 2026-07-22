@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Buffer } from 'buffer'
 import './index.css'
+import './styles/design-tokens.css'
+import './styles/components.css'
 import App from './App.tsx'
 
 const browserGlobal = globalThis as typeof globalThis & { Buffer?: typeof Buffer }
